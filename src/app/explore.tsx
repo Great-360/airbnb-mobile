@@ -1,181 +1,444 @@
-import { Image } from 'expo-image';
-import { SymbolView } from 'expo-symbols';
-import React from 'react';
-import { Platform, Pressable, ScrollView, StyleSheet } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+// src/app/explore.tsx  — updated to sync wishlist hearts with the API
 
-import { ExternalLink } from '@/components/external-link';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Collapsible } from '@/components/ui/collapsible';
-import { WebBadge } from '@/components/web-badge';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+import { SymbolView } from "expo-symbols";
+import React, { useCallback, useEffect, useState } from "react";
+import {
+  ActivityIndicator,
+  FlatList,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+} from "react-native";
+import { View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Toast from "react-native-toast-message";
 
-export default function TabTwoScreen() {
-  const safeAreaInsets = useSafeAreaInsets();
-  const insets = {
-    ...safeAreaInsets,
-    bottom: safeAreaInsets.bottom + BottomTabInset + Spacing.three,
-  };
+import { ThemedText } from "@/components/themed-text";
+import { ThemedView } from "@/components/themed-view";
+import { ListingCard, Listing } from "@/components/listing-card";
+import { BottomTabInset, Colors, Spacing } from "@/constants/theme";
+import { useTheme } from "@/hooks/use-theme";
+import { authHeaders } from "@/store/auth-store";
+
+const API_BASE_URL = "https://airbnb-api-1-25gk.onrender.com/api/v1";
+
+const CATEGORIES = [
+  {
+    id: "all",
+    label: "OMG!",
+    icon: { ios: "eye", android: "visibility", web: "visibility" },
+    type: null,
+  },
+  {
+    id: "villa",
+    label: "Beach",
+    icon: { ios: "sun.max", android: "wb_sunny", web: "wb_sunny" },
+    type: "VILLA",
+  },
+  {
+    id: "apartment",
+    label: "Amazing pools",
+    icon: { ios: "drop.fill", android: "pool", web: "pool" },
+    type: "APARTMENT",
+  },
+  {
+    id: "cabin",
+    label: "Cabins",
+    icon: { ios: "house", android: "home", web: "home" },
+    type: "CABIN",
+  },
+  {
+    id: "house",
+    label: "Houses",
+    icon: { ios: "building.2", android: "location_city", web: "location_city" },
+    type: "HOUSE",
+  },
+] as const;
+
+type CategoryId = (typeof CATEGORIES)[number]["id"];
+
+export default function ExploreScreen() {
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
 
-  const contentPlatformStyle = Platform.select({
-    android: {
-      paddingTop: insets.top,
-      paddingLeft: insets.left,
-      paddingRight: insets.right,
-      paddingBottom: insets.bottom,
-    },
-    web: {
-      paddingTop: Spacing.six,
-      paddingBottom: Spacing.four,
-    },
-  });
+  const [listings, setListings] = useState<Listing[]>([]);
+  const [wishlistedIds, setWishlistedIds] = useState<Set<string>>(new Set());
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<CategoryId>("all");
+
+  // ── Fetch listings ──────────────────────────────────────────────────────────
+  const fetchListings = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams();
+      const category = CATEGORIES.find((c) => c.id === selectedCategory);
+      if (category?.type) params.append("type", category.type);
+
+      const res = await fetch(`${API_BASE_URL}/listings/search?${params}`);
+      if (!res.ok) throw new Error(`Server error: ${res.status}`);
+      const json = await res.json();
+      setListings(json.data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [selectedCategory]);
+
+  // ── Fetch wishlist IDs ──────────────────────────────────────────────────────
+  // Called once on mount. Uses /wishlists/ids (lightweight — just IDs)
+  // so the hearts render correctly without loading full listing objects.
+  const fetchWishlistIds = useCallback(async () => {
+    try {
+      const headers = await authHeaders();
+      // If the user isn't logged in, authHeaders() returns {} and we get a 401
+      // We just swallow it — unauthenticated users see unfilled hearts
+      const res = await fetch(`${API_BASE_URL}/wishlists/ids`, { headers });
+      if (!res.ok) return; // not logged in — no hearts filled
+      const json = await res.json();
+      setWishlistedIds(new Set(json.ids as string[]));
+    } catch {
+      // network issue — silently ignore, hearts default to unfilled
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchListings();
+  }, [fetchListings]);
+  useEffect(() => {
+    fetchWishlistIds();
+  }, [fetchWishlistIds]);
+
+  // ── Toggle wishlist ─────────────────────────────────────────────────────────
+  // 1. Optimistically update UI (instant feedback)
+  // 2. Call the API in the background
+  // 3. Roll back if the API call fails
+  async function handleWishlistToggle(listing: Listing) {
+    const wasSaved = wishlistedIds.has(listing.id);
+
+    // Step 1 — optimistic update
+    setWishlistedIds((prev) => {
+      const next = new Set(prev);
+      wasSaved ? next.delete(listing.id) : next.add(listing.id);
+      return next;
+    });
+
+    // Show toast for action
+    Toast.show({
+      type: wasSaved ? "info" : "success",
+      text1: wasSaved ? "Removed from wishlist" : "Added to wishlist",
+      position: "bottom",
+    });
+
+    try {
+      const headers = await authHeaders();
+      if (!headers || !("Authorization" in headers)) {
+        // User not logged in — roll back and do nothing
+        setWishlistedIds((prev) => {
+          const next = new Set(prev);
+          wasSaved ? next.add(listing.id) : next.delete(listing.id);
+          return next;
+        });
+        Toast.show({
+          type: "error",
+          text1: "Please log in to save listings",
+          position: "bottom",
+        });
+        // TODO: redirect to login screen
+        return;
+      }
+
+      const method = wasSaved ? "DELETE" : "POST";
+      const res = await fetch(`${API_BASE_URL}/wishlists/${listing.id}`, {
+        method,
+        headers,
+      });
+
+      if (!res.ok) {
+        // Step 3 — roll back on failure
+        setWishlistedIds((prev) => {
+          const next = new Set(prev);
+          wasSaved ? next.add(listing.id) : next.delete(listing.id);
+          return next;
+        });
+        Toast.show({
+          type: "error",
+          text1: "Failed to update wishlist",
+          position: "bottom",
+        });
+      }
+    } catch {
+      // Network error — roll back
+      setWishlistedIds((prev) => {
+        const next = new Set(prev);
+        wasSaved ? next.add(listing.id) : next.delete(listing.id);
+        return next;
+      });
+      Toast.show({
+        type: "error",
+        text1: "Network error. Try again.",
+        position: "bottom",
+      });
+    }
+  }
+
+  // ── Header (search bar + category tabs) ────────────────────────────────────
+  function renderHeader() {
+    return (
+      <ThemedView>
+        <View
+          style={[styles.searchWrap, { paddingTop: insets.top + Spacing.two }]}
+        >
+          <Pressable
+            style={[
+              styles.searchBar,
+              {
+                backgroundColor: theme.backgroundElement,
+                borderColor: theme.border,
+              },
+            ]}
+          >
+            <SymbolView
+              name={{
+                ios: "magnifyingglass",
+                android: "search",
+                web: "search",
+              }}
+              size={16}
+              tintColor={theme.text}
+            />
+            <View style={styles.searchText}>
+              <ThemedText style={styles.searchPrimary}>Where to?</ThemedText>
+              <ThemedText
+                style={[styles.searchSecondary, { color: theme.textSecondary }]}
+              >
+                Anywhere · Any week · Add guests
+              </ThemedText>
+            </View>
+            <View style={[styles.filterBtn, { borderColor: theme.border }]}>
+              <SymbolView
+                name={{
+                  ios: "slider.horizontal.3",
+                  android: "tune",
+                  web: "tune",
+                }}
+                size={14}
+                tintColor={theme.text}
+              />
+            </View>
+          </Pressable>
+        </View>
+
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.tabsContent}
+        >
+          {CATEGORIES.map((cat) => {
+            const active = cat.id === selectedCategory;
+            return (
+              <Pressable
+                key={cat.id}
+                onPress={() => setSelectedCategory(cat.id)}
+                style={styles.tab}
+              >
+                <SymbolView
+                  name={cat.icon}
+                  size={22}
+                  tintColor={active ? theme.text : theme.textSecondary}
+                />
+                <ThemedText
+                  style={[
+                    styles.tabLabel,
+                    {
+                      color: active ? theme.text : theme.textSecondary,
+                      fontWeight: active ? "600" : "400",
+                    },
+                  ]}
+                >
+                  {cat.label}
+                </ThemedText>
+                {active && (
+                  <View
+                    style={[
+                      styles.tabUnderline,
+                      { backgroundColor: theme.text },
+                    ]}
+                  />
+                )}
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+        <View style={[styles.divider, { backgroundColor: theme.border }]} />
+      </ThemedView>
+    );
+  }
+
+  if (error) {
+    return (
+      <ThemedView style={styles.centered}>
+        <ThemedText style={styles.emptyIcon}>⚠️</ThemedText>
+        <ThemedText style={styles.emptyTitle}>
+          Couldn't load listings
+        </ThemedText>
+        <ThemedText style={[styles.emptyBody, { color: theme.textSecondary }]}>
+          {error}
+        </ThemedText>
+        <Pressable
+          style={[styles.retryBtn, { backgroundColor: Colors.light.primary }]}
+          onPress={fetchListings}
+        >
+          <ThemedText style={styles.retryText}>Try again</ThemedText>
+        </Pressable>
+      </ThemedView>
+    );
+  }
 
   return (
-    <ScrollView
-      style={[styles.scrollView, { backgroundColor: theme.background }]}
-      contentInset={insets}
-      contentContainerStyle={[styles.contentContainer, contentPlatformStyle]}>
-      <ThemedView style={styles.container}>
-        <ThemedView style={styles.titleContainer}>
-          <ThemedText type="subtitle">Explore</ThemedText>
-          <ThemedText style={styles.centerText} themeColor="textSecondary">
-            This starter app includes example{'\n'}code to help you get started.
-          </ThemedText>
-
-          <ExternalLink href="https://docs.expo.dev" asChild>
-            <Pressable style={({ pressed }) => pressed && styles.pressed}>
-              <ThemedView type="backgroundElement" style={styles.linkButton}>
-                <ThemedText type="link">Expo documentation</ThemedText>
-                <SymbolView
-                  tintColor={theme.text}
-                  name={{ ios: 'arrow.up.right.square', android: 'link', web: 'link' }}
-                  size={12}
-                />
-              </ThemedView>
-            </Pressable>
-          </ExternalLink>
-        </ThemedView>
-
-        <ThemedView style={styles.sectionsWrapper}>
-          <Collapsible title="File-based routing">
-            <ThemedText type="small">
-              This app has two screens: <ThemedText type="code">src/app/index.tsx</ThemedText> and{' '}
-              <ThemedText type="code">src/app/explore.tsx</ThemedText>
-            </ThemedText>
-            <ThemedText type="small">
-              The layout file in <ThemedText type="code">src/app/_layout.tsx</ThemedText> sets up
-              the tab navigator.
-            </ThemedText>
-            <ExternalLink href="https://docs.expo.dev/router/introduction">
-              <ThemedText type="linkPrimary">Learn more</ThemedText>
-            </ExternalLink>
-          </Collapsible>
-
-          <Collapsible title="Android, iOS, and web support">
-            <ThemedView type="backgroundElement" style={styles.collapsibleContent}>
-              <ThemedText type="small">
-                You can open this project on Android, iOS, and the web. To open the web version,
-                press <ThemedText type="smallBold">w</ThemedText> in the terminal running this
-                project.
+    <ThemedView style={styles.container}>
+      <FlatList
+        data={listings}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => (
+          <ListingCard
+            listing={item}
+            onPress={(l) => console.log("Open listing", l.id)}
+            onWishlistPress={handleWishlistToggle}
+            isWishlisted={wishlistedIds.has(item.id)}
+          />
+        )}
+        ListHeaderComponent={renderHeader}
+        ListEmptyComponent={
+          isLoading ? null : (
+            <View style={styles.centered}>
+              <ThemedText style={styles.emptyIcon}>🔍</ThemedText>
+              <ThemedText style={styles.emptyTitle}>
+                No listings found
               </ThemedText>
-              <Image
-                source={require('@/assets/images/tutorial-web.png')}
-                style={styles.imageTutorial}
-              />
-            </ThemedView>
-          </Collapsible>
+            </View>
+          )
+        }
+        contentContainerStyle={{
+          paddingBottom: BottomTabInset + Spacing.four,
+          flexGrow: 1,
+        }}
+        refreshing={isLoading}
+        onRefresh={fetchListings}
+        removeClippedSubviews={Platform.OS === "android"}
+      />
 
-          <Collapsible title="Images">
-            <ThemedText type="small">
-              For static images, you can use the <ThemedText type="code">@2x</ThemedText> and{' '}
-              <ThemedText type="code">@3x</ThemedText> suffixes to provide files for different
-              screen densities.
-            </ThemedText>
-            <Image source={require('@/assets/images/react-logo.png')} style={styles.imageReact} />
-            <ExternalLink href="https://reactnative.dev/docs/images">
-              <ThemedText type="linkPrimary">Learn more</ThemedText>
-            </ExternalLink>
-          </Collapsible>
+      {isLoading && listings.length === 0 && (
+        <View style={styles.loadingOverlay}>
+          <ActivityIndicator size="large" color={Colors.light.primary} />
+        </View>
+      )}
 
-          <Collapsible title="Light and dark mode components">
-            <ThemedText type="small">
-              This template has light and dark mode support. The{' '}
-              <ThemedText type="code">useColorScheme()</ThemedText> hook lets you inspect what the
-              user&apos;s current color scheme is, and so you can adjust UI colors accordingly.
-            </ThemedText>
-            <ExternalLink href="https://docs.expo.dev/develop/user-interface/color-themes/">
-              <ThemedText type="linkPrimary">Learn more</ThemedText>
-            </ExternalLink>
-          </Collapsible>
-
-          <Collapsible title="Animations">
-            <ThemedText type="small">
-              This template includes an example of an animated component. The{' '}
-              <ThemedText type="code">src/components/ui/collapsible.tsx</ThemedText> component uses
-              the powerful <ThemedText type="code">react-native-reanimated</ThemedText> library to
-              animate opening this hint.
-            </ThemedText>
-          </Collapsible>
-        </ThemedView>
-        {Platform.OS === 'web' && <WebBadge />}
-      </ThemedView>
-    </ScrollView>
+      <View
+        style={[styles.mapBtnWrap, { bottom: BottomTabInset + Spacing.three }]}
+      >
+        <Pressable style={styles.mapBtn}>
+          <ThemedText style={styles.mapBtnText}>Map</ThemedText>
+          <SymbolView
+            name={{ ios: "map", android: "map", web: "map" }}
+            size={14}
+            tintColor="#fff"
+          />
+        </Pressable>
+      </View>
+    </ThemedView>
   );
 }
 
 const styles = StyleSheet.create({
-  scrollView: {
+  container: { flex: 1 },
+  searchWrap: { paddingHorizontal: Spacing.four, paddingBottom: Spacing.three },
+  searchBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.two,
+    borderRadius: 40,
+    borderWidth: 1,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  searchText: { flex: 1, gap: 1 },
+  searchPrimary: { fontWeight: "600", fontSize: 14 },
+  searchSecondary: { fontSize: 12 },
+  filterBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  tabsContent: { paddingHorizontal: Spacing.four, gap: Spacing.four },
+  tab: {
+    alignItems: "center",
+    paddingBottom: Spacing.two,
+    minWidth: 56,
+    position: "relative",
+  },
+  tabLabel: { fontSize: 12, marginTop: 4 },
+  tabUnderline: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 2,
+    borderRadius: 1,
+  },
+  divider: {
+    height: StyleSheet.hairlineWidth,
+    marginTop: Spacing.two,
+    marginBottom: Spacing.three,
+  },
+  centered: {
     flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: Spacing.two,
+    padding: Spacing.five,
   },
-  contentContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-  },
-  container: {
-    maxWidth: MaxContentWidth,
-    flexGrow: 1,
-  },
-  titleContainer: {
-    gap: Spacing.three,
-    alignItems: 'center',
-    paddingHorizontal: Spacing.four,
-    paddingVertical: Spacing.six,
-  },
-  centerText: {
-    textAlign: 'center',
-  },
-  pressed: {
-    opacity: 0.7,
-  },
-  linkButton: {
-    flexDirection: 'row',
+  emptyIcon: { fontSize: 40 },
+  emptyTitle: { fontWeight: "600", fontSize: 18, textAlign: "center" },
+  emptyBody: { textAlign: "center", fontSize: 14 },
+  retryBtn: {
+    marginTop: Spacing.two,
     paddingHorizontal: Spacing.four,
     paddingVertical: Spacing.two,
-    borderRadius: Spacing.five,
-    justifyContent: 'center',
+    borderRadius: 24,
+  },
+  retryText: { color: "#fff", fontWeight: "600", fontSize: 15 },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.6)",
+  },
+  mapBtnWrap: { position: "absolute", left: 0, right: 0, alignItems: "center" },
+  mapBtn: {
+    flexDirection: "row",
+    alignItems: "center",
     gap: Spacing.one,
-    alignItems: 'center',
-  },
-  sectionsWrapper: {
-    gap: Spacing.five,
+    backgroundColor: "#222",
     paddingHorizontal: Spacing.four,
-    paddingTop: Spacing.three,
+    paddingVertical: Spacing.two,
+    borderRadius: 24,
+    elevation: 6,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
   },
-  collapsibleContent: {
-    alignItems: 'center',
-  },
-  imageTutorial: {
-    width: '100%',
-    aspectRatio: 296 / 171,
-    borderRadius: Spacing.three,
-    marginTop: Spacing.two,
-  },
-  imageReact: {
-    width: 100,
-    height: 100,
-    alignSelf: 'center',
-  },
+  mapBtnText: { color: "#fff", fontWeight: "600", fontSize: 14 },
 });

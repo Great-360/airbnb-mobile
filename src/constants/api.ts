@@ -1,0 +1,1 @@
+export  const API_BASE_URL = "https://airbnb-api-1-25gk.onrender.com/api/v1"
