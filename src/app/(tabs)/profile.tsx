@@ -1,4 +1,5 @@
 import { SymbolView } from "expo-symbols";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -75,6 +76,8 @@ function getInitials(name?: string | null) {
 
 export default function ProfileScreen() {
   const theme = useTheme();
+  const router = useRouter();
+  const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
 
   const [authView, setAuthView] = useState<AuthView>("loading");
   const [activeTab, setActiveTab] = useState<ActiveTab>("login");
@@ -181,6 +184,10 @@ export default function ProfileScreen() {
       const me = await fetchMeAndSetUser();
       setUser(me);
       setAuthView("authenticated");
+
+      if (returnTo && typeof returnTo === "string") {
+        router.replace(returnTo as `/listing/${string}`);
+      }
     } catch {
       setFormError("Network error. Please try again.");
     } finally {

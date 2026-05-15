@@ -22,6 +22,7 @@ import { BottomTabInset, Colors, Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 import type { Listing } from "@/types/listing";
 import { authHeaders } from "@/store/auth-store";
+import { toggleWishlist } from "@/utils/wishlist-toggle";
 import { useRouter } from "expo-router";
 
 const CATEGORIES = [
@@ -121,70 +122,37 @@ export default function ExploreScreen() {
   async function handleWishlistToggle(listing: Listing) {
     const wasSaved = wishlistedIds.has(listing.id);
 
-    // Step 1 — optimistic update
     setWishlistedIds((prev) => {
       const next = new Set(prev);
       wasSaved ? next.delete(listing.id) : next.add(listing.id);
       return next;
     });
 
-    // Show toast for action
-    Toast.show({
-      type: wasSaved ? "info" : "success",
-      text1: wasSaved ? "Removed from wishlist" : "Added to wishlist",
-      position: "bottom",
-    });
+    const result = await toggleWishlist({ listing, wasSaved, router });
 
-    try {
-      const headers = await authHeaders();
-      if (!headers || !("Authorization" in headers)) {
-        // User not logged in — roll back and do nothing
-        setWishlistedIds((prev) => {
-          const next = new Set(prev);
-          wasSaved ? next.add(listing.id) : next.delete(listing.id);
-          return next;
-        });
-        Toast.show({
-          type: "error",
-          text1: "Please log in to save listings",
-          position: "bottom",
-        });
-        // TODO: redirect to login screen
-        return;
-      }
-
-      const method = wasSaved ? "DELETE" : "POST";
-      const res = await fetch(`${API_BASE_URL}/wishlists/${listing.id}`, {
-        method,
-        headers,
-      });
-
-      if (!res.ok) {
-        // Step 3 — roll back on failure
-        setWishlistedIds((prev) => {
-          const next = new Set(prev);
-          wasSaved ? next.add(listing.id) : next.delete(listing.id);
-          return next;
-        });
-        Toast.show({
-          type: "error",
-          text1: "Failed to update wishlist",
-          position: "bottom",
-        });
-      }
-    } catch {
-      // Network error — roll back
+    if (!result.ok) {
       setWishlistedIds((prev) => {
         const next = new Set(prev);
         wasSaved ? next.add(listing.id) : next.delete(listing.id);
         return next;
       });
+      if (result.reason === "unauthenticated") return;
       Toast.show({
         type: "error",
-        text1: "Network error. Try again.",
+        text1:
+          result.reason === "network_error"
+            ? "Network error. Try again."
+            : "Failed to update wishlist",
         position: "bottom",
       });
+      return;
     }
+
+    Toast.show({
+      type: wasSaved ? "info" : "success",
+      text1: wasSaved ? "Removed from wishlist" : "Added to wishlist",
+      position: "bottom",
+    });
   }
 
   // ── Header (search bar + category tabs) ────────────────────────────────────

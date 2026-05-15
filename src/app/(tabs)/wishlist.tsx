@@ -1,5 +1,6 @@
 import { SymbolView } from "expo-symbols";
-import React, { useCallback, useEffect, useState } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
+import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -8,17 +9,15 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Toast from "react-native-toast-message";
 
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
-import { ListingCard } from "@/components/listing-card";
+import { WishlistRowCard } from "@/components/wishlist-row-card";
 import { API_BASE_URL } from "@/constants/api";
 import { BottomTabInset, Colors, Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 import type { Listing } from "@/types/listing";
 import { authHeaders } from "@/store/auth-store";
-import { useRouter } from "expo-router";
 
 export default function WishlistScreen() {
   const router = useRouter();
@@ -26,7 +25,6 @@ export default function WishlistScreen() {
   const insets = useSafeAreaInsets();
 
   const [listings, setListings] = useState<Listing[]>([]);
-  const [wishlistedIds, setWishlistedIds] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
@@ -36,6 +34,7 @@ export default function WishlistScreen() {
       const headers = await authHeaders();
       if (!("Authorization" in headers)) {
         setIsLoggedIn(false);
+        setListings([]);
         return;
       }
       setIsLoggedIn(true);
@@ -43,57 +42,16 @@ export default function WishlistScreen() {
       if (!res.ok) return;
       const data: Listing[] = await res.json();
       setListings(data);
-      setWishlistedIds(new Set(data.map((l) => l.id)));
     } finally {
       setIsLoading(false);
     }
   }, []);
 
-  useEffect(() => {
-    fetchWishlist();
-  }, [fetchWishlist]);
-
-  async function handleRemove(listing: Listing) {
-    // Optimistic remove
-    setListings((prev) => prev.filter((l) => l.id !== listing.id));
-    setWishlistedIds((prev) => {
-      const n = new Set(prev);
-      n.delete(listing.id);
-      return n;
-    });
-
-    Toast.show({
-      type: "info",
-      text1: "Removed from wishlist",
-      position: "bottom",
-    });
-
-    try {
-      const headers = await authHeaders();
-      const res = await fetch(`${API_BASE_URL}/wishlists/${listing.id}`, {
-        method: "DELETE",
-        headers,
-      });
-      if (!res.ok) {
-        // Roll back if delete failed
-        setListings((prev) => [listing, ...prev]);
-        setWishlistedIds((prev) => new Set([...prev, listing.id]));
-        Toast.show({
-          type: "error",
-          text1: "Failed to remove from wishlist",
-          position: "bottom",
-        });
-      }
-    } catch {
-      setListings((prev) => [listing, ...prev]);
-      setWishlistedIds((prev) => new Set([...prev, listing.id]));
-      Toast.show({
-        type: "error",
-        text1: "Network error. Try again.",
-        position: "bottom",
-      });
-    }
-  }
+  useFocusEffect(
+    useCallback(() => {
+      fetchWishlist();
+    }, [fetchWishlist]),
+  );
 
   if (isLoading) {
     return (
@@ -108,7 +66,7 @@ export default function WishlistScreen() {
       <ThemedView style={styles.container}>
         <View style={[styles.safeArea, { paddingTop: insets.top }]}>
           <ThemedText type="subtitle" style={styles.heading}>
-            Wishlists
+            Wishlist
           </ThemedText>
           <View style={styles.centered}>
             <SymbolView
@@ -117,13 +75,19 @@ export default function WishlistScreen() {
               tintColor={Colors.light.primary}
             />
             <ThemedText style={styles.emptyTitle}>
-              Log in to see your wishlists
+              Log in to see your wishlist
             </ThemedText>
             <ThemedText
               style={[styles.emptyBody, { color: theme.textSecondary }]}
-            > 
+            >
               Save your favourite listings and find them here any time.
             </ThemedText>
+            <Pressable
+              style={styles.loginButton}
+              onPress={() => router.push("/profile")}
+            >
+              <ThemedText style={styles.loginButtonText}>Log in</ThemedText>
+            </Pressable>
           </View>
         </View>
       </ThemedView>
@@ -136,11 +100,9 @@ export default function WishlistScreen() {
         data={listings}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <ListingCard
+          <WishlistRowCard
             listing={item}
             onPress={(l) => router.push(`/listing/${l.id}`)}
-            onWishlistPress={handleRemove}
-            isWishlisted={wishlistedIds.has(item.id)}
           />
         )}
         ListHeaderComponent={
@@ -151,7 +113,7 @@ export default function WishlistScreen() {
             ]}
           >
             <ThemedText type="subtitle" style={styles.heading}>
-              Wishlists
+              Wishlist
             </ThemedText>
           </View>
         }
@@ -196,4 +158,16 @@ const styles = StyleSheet.create({
   },
   emptyTitle: { fontWeight: "600", fontSize: 18, textAlign: "center" },
   emptyBody: { textAlign: "center", lineHeight: 22, fontSize: 14 },
+  loginButton: {
+    marginTop: Spacing.two,
+    backgroundColor: Colors.light.primary,
+    paddingHorizontal: Spacing.five,
+    paddingVertical: Spacing.three,
+    borderRadius: Spacing.two,
+  },
+  loginButtonText: {
+    color: "#fff",
+    fontWeight: "600",
+    fontSize: 16,
+  },
 });

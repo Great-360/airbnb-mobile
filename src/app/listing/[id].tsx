@@ -24,6 +24,7 @@ import { Colors, Spacing } from "@/constants/theme";
 import type { ListingDetail, ReviewsResponse } from "@/types/listing";
 import { resolveCoordinates } from "@/utils/listing-fallbacks";
 import { authHeaders } from "@/store/auth-store";
+import { toggleWishlist } from "@/utils/wishlist-toggle";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -87,38 +88,36 @@ export default function ListingDetailScreen() {
   }, [id]);
 
   async function handleWishlistToggle() {
-    if (!listing) return;
+    if (!listing || !id) return;
     const wasSaved = isWishlisted;
     setIsWishlisted(!wasSaved);
 
-    try {
-      const headers = await authHeaders();
-      if (!("Authorization" in headers)) {
-        setIsWishlisted(wasSaved);
-        Toast.show({
-          type: "error",
-          text1: "Please log in to save listings",
-          position: "bottom",
-        });
-        return;
-      }
-      const res = await fetch(`${API_BASE_URL}/wishlists/${listing.id}`, {
-        method: wasSaved ? "DELETE" : "POST",
-        headers,
-      });
-      if (!res.ok) {
-        setIsWishlisted(wasSaved);
-        Toast.show({ type: "error", text1: "Failed to update wishlist" });
-      } else {
-        Toast.show({
-          type: wasSaved ? "info" : "success",
-          text1: wasSaved ? "Removed from wishlist" : "Added to wishlist",
-        });
-      }
-    } catch {
+    const result = await toggleWishlist({
+      listing,
+      wasSaved,
+      router,
+      returnTo: `/listing/${id}`,
+    });
+
+    if (!result.ok) {
       setIsWishlisted(wasSaved);
-      Toast.show({ type: "error", text1: "Network error" });
+      if (result.reason === "unauthenticated") return;
+      Toast.show({
+        type: "error",
+        text1:
+          result.reason === "network_error"
+            ? "Network error. Try again."
+            : "Failed to update wishlist",
+        position: "bottom",
+      });
+      return;
     }
+
+    Toast.show({
+      type: wasSaved ? "info" : "success",
+      text1: wasSaved ? "Removed from wishlist" : "Added to wishlist",
+      position: "bottom",
+    });
   }
 
   function handleShare() {
