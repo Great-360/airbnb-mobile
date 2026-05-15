@@ -13,28 +13,9 @@ import {
   View,
 } from "react-native";
 
-export interface ListingPhoto {
-  id: string;
-  url: string;
-  publicId: string;
-}
+import type { Listing, ListingPhoto } from "@/types/listing";
 
-export interface Listing {
-  id: string;
-  title: string;
-  description: string;
-  location: string;
-  pricePerNight: number;
-  guests: number;
-  type: "APARTMENT" | "HOUSE" | "VILLA" | "CABIN";
-  amenities: string[];
-  rating: number | null;
-  photos: ListingPhoto[];
-  host: {
-    name: string;
-    avatar: string | null;
-  };
-}
+export type { Listing, ListingPhoto };
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const CARD_HORIZONTAL_MARGIN = Spacing.four;

@@ -12,14 +12,16 @@ import Toast from "react-native-toast-message";
 
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
-import { ListingCard, Listing } from "@/components/listing-card";
+import { ListingCard } from "@/components/listing-card";
+import { API_BASE_URL } from "@/constants/api";
 import { BottomTabInset, Colors, Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
+import type { Listing } from "@/types/listing";
 import { authHeaders } from "@/store/auth-store";
-
-const API_BASE_URL = "https://airbnb-api-1-25gk.onrender.com/api/v1";
+import { useRouter } from "expo-router";
 
 export default function WishlistScreen() {
+  const router = useRouter();
   const theme = useTheme();
   const insets = useSafeAreaInsets();
 
@@ -136,7 +138,7 @@ export default function WishlistScreen() {
         renderItem={({ item }) => (
           <ListingCard
             listing={item}
-            onPress={(l) => console.log("Open listing", l.id)}
+            onPress={(l) => router.push(`/listing/${l.id}`)}
             onWishlistPress={handleRemove}
             isWishlisted={wishlistedIds.has(item.id)}
           />

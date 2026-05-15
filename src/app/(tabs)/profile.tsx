@@ -15,7 +15,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { API_BASE_URL } from "@/constants/api";
-import { BottomTabInset, Colors, Spacing } from "@/constants/theme";
+import { Colors, Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 import {
   authHeaders,
@@ -279,26 +279,32 @@ export default function ProfileScreen() {
       );
     };
 
+    const submitLabel = activeTab === "login" ? "Log in" : "Create account";
+    const onSubmit = activeTab === "login" ? handleLogin : handleRegister;
+
     return (
-      <View style={{ flex: 1 }}>
+      <KeyboardAvoidingView
+        style={styles.authForms}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        keyboardVerticalOffset={Platform.OS === "ios" ? Spacing.five : 0}
+      >
         <View style={styles.tabsRow}>
           <TabButton tab="login" label="Log in" />
           <TabButton tab="register" label="Register" />
         </View>
 
-        {activeTab === "login" ? (
-          <ScrollView
-            contentContainerStyle={styles.formWrap}
-            keyboardShouldPersistTaps="handled"
-          >
-            <KeyboardAvoidingView
-              behavior={Platform.OS === "ios" ? "padding" : undefined}
-              style={{ gap: Spacing.three }}
-            >
-              <ThemedText type="subtitle" style={styles.formTitle}>
-                Log in
-              </ThemedText>
+        <ScrollView
+          style={styles.authScroll}
+          contentContainerStyle={styles.authScrollContent}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <ThemedText type="subtitle" style={styles.formTitle}>
+            {activeTab === "login" ? "Log in" : "Register"}
+          </ThemedText>
 
+          {activeTab === "login" ? (
+            <View style={styles.formFields}>
               <TextInput
                 value={loginEmail}
                 onChangeText={setLoginEmail}
@@ -323,56 +329,9 @@ export default function ProfileScreen() {
                   { color: theme.text, borderColor: theme.border },
                 ]}
               />
-
-              {formError && (
-                <ThemedText style={styles.errorText}>{formError}</ThemedText>
-              )}
-
-              <Pressable
-                disabled={isSubmitting}
-                style={({ pressed }) => [
-                  styles.submitBtn,
-                  {
-                    backgroundColor: pressed
-                      ? Colors.light.primary
-                      : Colors.light.primary,
-                    opacity: isSubmitting ? 0.7 : 1,
-                  },
-                ]}
-                onPress={handleLogin}
-              >
-                {isSubmitting ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <ThemedText style={styles.submitText}>Log in</ThemedText>
-                )}
-              </Pressable>
-
-              <View style={styles.linkRow}>
-                <ThemedText themeColor="textSecondary">New here? </ThemedText>
-                <Pressable onPress={() => setActiveTab("register")}>
-                  <ThemedText
-                    style={{ color: Colors.light.primary, fontWeight: "600" }}
-                  >
-                    Create account
-                  </ThemedText>
-                </Pressable>
-              </View>
-            </KeyboardAvoidingView>
-          </ScrollView>
-        ) : (
-          <ScrollView
-            contentContainerStyle={{paddingBottom: BottomTabInset}}
-            keyboardShouldPersistTaps="handled"
-          >
-            <KeyboardAvoidingView
-              behavior={Platform.OS === "ios" ? "padding" : undefined}
-              style={{ gap: Spacing.three }}
-            >
-              <ThemedText type="subtitle" style={styles.formTitle}>
-                Register
-              </ThemedText>
-
+            </View>
+          ) : (
+            <View style={styles.formFields}>
               <TextInput
                 value={registerName}
                 onChangeText={setRegisterName}
@@ -472,34 +431,51 @@ export default function ProfileScreen() {
                   })}
                 </View>
               </View>
+            </View>
+          )}
+        </ScrollView>
 
-              {formError && (
-                <ThemedText style={styles.errorText}>{formError}</ThemedText>
-              )}
+        <View style={styles.formFooter}>
+          <View style={styles.errorSlot}>
+            {formError ? (
+              <ThemedText style={styles.errorText}>{formError}</ThemedText>
+            ) : null}
+          </View>
 
-              <Pressable
-                disabled={isSubmitting}
-                style={({ pressed }) => [
-                  styles.submitBtn,
-                  {
-                    opacity: isSubmitting ? 0.7 : 1,
-                    backgroundColor: pressed
-                      ? Colors.light.primary
-                      : Colors.light.primary,
-                  },
-                ]}
-                onPress={handleRegister}
-              >
-                {isSubmitting ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <ThemedText style={styles.submitText}>
+          <Pressable
+            disabled={isSubmitting}
+            style={({ pressed }) => [
+              styles.submitBtn,
+              {
+                backgroundColor: pressed
+                  ? Colors.light.primary
+                  : Colors.light.primary,
+                opacity: isSubmitting ? 0.7 : 1,
+              },
+            ]}
+            onPress={onSubmit}
+          >
+            {isSubmitting ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <ThemedText style={styles.submitText}>{submitLabel}</ThemedText>
+            )}
+          </Pressable>
+
+          <View style={styles.linkRow}>
+            {activeTab === "login" ? (
+              <>
+                <ThemedText themeColor="textSecondary">New here? </ThemedText>
+                <Pressable onPress={() => setActiveTab("register")}>
+                  <ThemedText
+                    style={{ color: Colors.light.primary, fontWeight: "600" }}
+                  >
                     Create account
                   </ThemedText>
-                )}
-              </Pressable>
-
-              <View style={styles.linkRow}>
+                </Pressable>
+              </>
+            ) : (
+              <>
                 <ThemedText themeColor="textSecondary">
                   Already have an account?{" "}
                 </ThemedText>
@@ -510,11 +486,11 @@ export default function ProfileScreen() {
                     Log in
                   </ThemedText>
                 </Pressable>
-              </View>
-            </KeyboardAvoidingView>
-          </ScrollView>
-        )}
-      </View>
+              </>
+            )}
+          </View>
+        </View>
+      </KeyboardAvoidingView>
     );
   }
 
@@ -600,9 +576,7 @@ export default function ProfileScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <SafeAreaView
-        style={[styles.safeArea, { paddingBottom: BottomTabInset }]}
-      >
+      <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
         <ThemedText type="subtitle" style={styles.heading}>
           Profile
         </ThemedText>
@@ -650,7 +624,26 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
 
-  formWrap: { },
+  authForms: {
+    flex: 1,
+  },
+  authScroll: {
+    flex: 1,
+  },
+  authScrollContent: {
+    paddingBottom: Spacing.two,
+  },
+  formFields: {
+    gap: Spacing.three,
+  },
+  formFooter: {
+    gap: Spacing.three,
+    paddingTop: Spacing.two,
+  },
+  errorSlot: {
+    minHeight: 20,
+    justifyContent: "center",
+  },
   formTitle: { marginBottom: Spacing.two },
   input: {
     borderWidth: 1,
@@ -662,7 +655,6 @@ const styles = StyleSheet.create({
   errorText: {
     color: "#ff4d4f",
     fontWeight: "600",
-    marginTop: -Spacing.two,
   },
   submitBtn: {
     borderRadius: 16,
@@ -675,8 +667,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
+    flexWrap: "wrap",
     gap: 4,
-    marginTop: -Spacing.two,
+    paddingTop: Spacing.two,
   },
 
   roleRow: { gap: Spacing.two },
