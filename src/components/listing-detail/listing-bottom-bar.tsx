@@ -8,12 +8,14 @@ interface ListingBottomBarProps {
   pricePerNight: number;
   dateLabel?: string;
   onReserve: () => void;
+  disabled?: boolean;
 }
 
 export function ListingBottomBar({
   pricePerNight,
   dateLabel = "Jun 25 – 30",
   onReserve,
+  disabled = false,
 }: ListingBottomBarProps) {
   const insets = useSafeAreaInsets();
   const theme = useTheme();
@@ -41,10 +43,17 @@ export function ListingBottomBar({
         </ThemedText>
       </View>
       <Pressable
-        style={[styles.reserve, { backgroundColor: Colors.light.primary }]}
-        onPress={onReserve}
+        style={
+          disabled
+            ? [styles.reserve, styles.reserveDisabled]
+            : [styles.reserve, { backgroundColor: Colors.light.primary }]
+        }
+        onPress={disabled ? undefined : onReserve}
+        disabled={disabled}
       >
-        <ThemedText style={styles.reserveText}>Reserve</ThemedText>
+        <ThemedText style={styles.reserveText}>
+          {disabled ? "Reserved" : "Reserve"}
+        </ThemedText>
       </Pressable>
     </View>
   );
@@ -69,6 +78,9 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     minWidth: 140,
     alignItems: "center",
+  },
+  reserveDisabled: {
+    backgroundColor: "rgba(0,0,0,0.12)",
   },
   reserveText: { color: "#fff", fontSize: 16, fontWeight: "700" },
 });

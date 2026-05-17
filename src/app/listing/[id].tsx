@@ -1,3 +1,4 @@
+import { getUserBookings } from "@/api/bookings";
 import { getListing, getListingReviews } from "@/api/listings";
 import { AirCoverSection } from "@/components/listing-detail/aircover-section";
 import { AmenitiesSection } from "@/components/listing-detail/amenities-section";
@@ -5,14 +6,14 @@ import { DescriptionSection } from "@/components/listing-detail/description-sect
 import { FooterLinks } from "@/components/listing-detail/footer-links";
 import { HighlightsSection } from "@/components/listing-detail/highlight-row";
 import { HostRow } from "@/components/listing-detail/host-row";
-import { ListingBottomBar } from "@/components/listing-detail/listing-bottom-bar";
-import { ListingHeader } from "@/components/listing-detail/listing-header";
-import { ListingHeroGallery } from "@/components/listing-detail/listing-hero-gallery";
 import {
   AmenitiesModalContent,
   ListModal,
   ReviewsModalContent,
 } from "@/components/listing-detail/list-modal";
+import { ListingBottomBar } from "@/components/listing-detail/listing-bottom-bar";
+import { ListingHeader } from "@/components/listing-detail/listing-header";
+import { ListingHeroGallery } from "@/components/listing-detail/listing-hero-gallery";
 import { LocationMapSection } from "@/components/listing-detail/location-map";
 import { ReviewsSection } from "@/components/listing-detail/reviews-section";
 import { SectionDivider } from "@/components/listing-detail/section-divider";
@@ -21,11 +22,11 @@ import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { API_BASE_URL } from "@/constants/api";
 import { Colors, Spacing } from "@/constants/theme";
+import { authHeaders } from "@/store/auth-store";
 import type { ListingDetail, ReviewsResponse } from "@/types/listing";
 import { resolveCoordinates } from "@/utils/listing-fallbacks";
-import { authHeaders } from "@/store/auth-store";
 import { toggleWishlist } from "@/utils/wishlist-toggle";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -49,6 +50,7 @@ export default function ListingDetailScreen() {
   const [isWishlisted, setIsWishlisted] = useState(false);
   const [amenitiesOpen, setAmenitiesOpen] = useState(false);
   const [reviewsOpen, setReviewsOpen] = useState(false);
+  const [alreadyBooked, setAlreadyBooked] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -86,6 +88,37 @@ export default function ListingDetailScreen() {
     }
     checkWishlist();
   }, [id]);
+
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+
+      async function checkBookings() {
+        if (!id) return;
+        try {
+          const bookings = await getUserBookings();
+          if (!active) return;
+          setAlreadyBooked(
+            bookings.some((b) => {
+              const status = String(b.status ?? "").toUpperCase();
+              return (
+                String(b.listingId) === String(id) && status === "CONFIRMED"
+              );
+            }),
+          );
+        } catch {
+          if (!active) return;
+          setAlreadyBooked(false);
+        }
+      }
+
+      checkBookings();
+
+      return () => {
+        active = false;
+      };
+    }, [id]),
+  );
 
   async function handleWishlistToggle() {
     if (!listing || !id) return;
@@ -142,8 +175,12 @@ export default function ListingDetailScreen() {
   if (error || !listing) {
     return (
       <ThemedView style={styles.centered}>
-        <ThemedText style={styles.errorTitle}>Couldn&apos;t load listing</ThemedText>
-        <ThemedText style={styles.errorBody}>{error ?? "Unknown error"}</ThemedText>
+        <ThemedText style={styles.errorTitle}>
+          Couldn&apos;t load listing
+        </ThemedText>
+        <ThemedText style={styles.errorBody}>
+          {error ?? "Unknown error"}
+        </ThemedText>
         <Pressable
           style={[styles.retry, { backgroundColor: Colors.light.primary }]}
           onPress={load}
@@ -226,11 +263,15 @@ export default function ListingDetailScreen() {
 
       <ListingBottomBar
         pricePerNight={listing.pricePerNight}
+        disabled={alreadyBooked}
         onReserve={() =>
-          Toast.show({
-            type: "info",
-            text1: "Booking coming soon",
-            text2: "Select dates on the next release.",
+          router.push({
+            pathname: "/booking/DateSelection",
+            params: {
+              listingId: listing.id,
+              pricePerNight: String(listing.pricePerNight),
+              dateLabel: "",
+            },
           })
         }
       />
