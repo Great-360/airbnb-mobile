@@ -13,6 +13,17 @@ type User = {
   role?: Role | string | null;
 };
 
+function normalizeRole(role: unknown): Role | null {
+  const raw = String(role ?? "").trim().toUpperCase();
+  if (!raw) return null;
+  if (raw === "HOST") return "HOST";
+  if (raw === "GUEST") return "GUEST";
+  // backend might send other variants; keep it strict-ish but tolerant
+  if (raw.includes("HOST")) return "HOST";
+  if (raw.includes("GUEST")) return "GUEST";
+  return null;
+}
+
 export default function IndexScreen() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
@@ -23,6 +34,7 @@ export default function IndexScreen() {
     async function decide() {
       try {
         setIsLoading(true);
+
         const token = await getToken();
         if (!token) {
           router.replace("/(tabs)/explore");
@@ -30,15 +42,23 @@ export default function IndexScreen() {
         }
 
         const headers = await authHeaders();
-        const res = await fetch(`${API_BASE_URL}/auth/me`, { headers });
+
+        // /auth/me can fail intermittently on cold start. Retry once before clearing token.
+        let res = await fetch(`${API_BASE_URL}/auth/me`, { headers });
         if (!res.ok) {
+          await new Promise((r) => setTimeout(r, 250));
+          res = await fetch(`${API_BASE_URL}/auth/me`, { headers });
+        }
+
+        if (!res.ok) {
+          // token likely invalid/expired now
           await clearToken();
           router.replace("/(tabs)/explore");
           return;
         }
 
         const json = (await res.json()) as User;
-        const role = String(json.role ?? "").toUpperCase();
+        const role = normalizeRole(json.role);
 
         if (role === "HOST") {
           router.replace("/host/listings");
@@ -46,6 +66,7 @@ export default function IndexScreen() {
           router.replace("/(tabs)/explore");
         }
       } catch {
+        // don't hard-clear token on unknown network errors
         router.replace("/(tabs)/explore");
       } finally {
         if (!cancelled) setIsLoading(false);
@@ -83,3 +104,4 @@ const styles = StyleSheet.create({
   },
   text: { marginTop: Spacing.two },
 });
+
