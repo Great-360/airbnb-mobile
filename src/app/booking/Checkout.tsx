@@ -71,10 +71,10 @@ export default function CheckoutScreen() {
     try {
       const booking = await createBooking(input);
       router.replace({
-        pathname: "/booking/BookingSuccess",
+        pathname: "/(tabs)/inbox",
         params: {
+          tab: "messages",
           bookingId: booking.id,
-          listingId: booking.listingId,
         },
       } as any);
     } catch (e) {

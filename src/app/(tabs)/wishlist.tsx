@@ -1,5 +1,5 @@
-import { SymbolView } from "expo-symbols";
 import { useFocusEffect, useRouter } from "expo-router";
+import { SymbolView } from "expo-symbols";
 import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
@@ -16,8 +16,8 @@ import { WishlistRowCard } from "@/components/wishlist-row-card";
 import { API_BASE_URL } from "@/constants/api";
 import { BottomTabInset, Colors, Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
-import type { Listing } from "@/types/listing";
 import { authHeaders } from "@/store/auth-store";
+import type { Listing } from "@/types/listing";
 
 export default function WishlistScreen() {
   const router = useRouter();
@@ -124,13 +124,11 @@ export default function WishlistScreen() {
               size={48}
               tintColor={Colors.light.primary}
             />
-            <ThemedText style={styles.emptyTitle}>
-              No saved listings yet
-            </ThemedText>
+            <ThemedText style={styles.emptyTitle}>Nothing saved yet</ThemedText>
             <ThemedText
               style={[styles.emptyBody, { color: theme.textSecondary }]}
             >
-              Tap the heart on any listing to save it here.
+              Tap the heart on any listing to add it here.
             </ThemedText>
           </View>
         }

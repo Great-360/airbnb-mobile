@@ -17,6 +17,7 @@ export default function RootLayout() {
       <AnimatedSplashOverlay />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="host" />
         <Stack.Screen
           name="listing/[id]"
           options={{
@@ -25,6 +26,7 @@ export default function RootLayout() {
           }}
         />
       </Stack>
+
       <Toast />
     </ThemeProvider>
   );

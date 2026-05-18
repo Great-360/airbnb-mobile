@@ -1,9 +1,17 @@
 # TODO
 
-## Trips page auth handling
+## Host role navbar + pages
 
-- [x] Identify why Trips shows while logged out
-- [ ] Patch `src/app/(tabs)/trips.tsx` so it clears bookings when auth token is missing (or re-fetches on focus)
-
-- [ ] (Optional) Prevent stale UI by reloading on screen focus using `useFocusEffect`
-- [ ] Smoke test: login -> visit trips -> logout -> trips shows empty state
+- [ ] Inspect existing navigation/entry points (tabs vs routes)
+- [ ] Create host tabs UI components (native + web)
+  - [ ] `src/components/host-tabs.tsx`
+  - [ ] `src/components/host-tabs.web.tsx`
+- [ ] Create host screens (placeholders first)
+  - [ ] `src/app/host/listings.tsx`
+  - [ ] `src/app/host/booking.tsx`
+  - [ ] `src/app/host/dashboard.tsx`
+  - [ ] `src/app/host/inbox.tsx`
+  - [ ] `src/app/host/profile.tsx` (reuse existing profile)
+- [ ] Wire host tabs route into app layout / router
+- [ ] Add role-based redirection after login (use `user.role === "HOST"`)
+- [ ] Lint + run web/mobile sanity checks

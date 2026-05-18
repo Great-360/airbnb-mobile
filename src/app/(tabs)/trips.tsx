@@ -2,7 +2,7 @@ import { getUserBookings } from "@/api/bookings";
 import { ListingCard } from "@/components/listing-card";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
-import { BottomTabInset, Colors, Spacing } from "@/constants/theme";
+import { Colors, Spacing } from "@/constants/theme";
 import { getToken } from "@/store/auth-store";
 import { type Booking } from "@/types/booking";
 import { useFocusEffect, useRouter } from "expo-router";
@@ -107,9 +107,7 @@ export default function TripsScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <SafeAreaView
-        style={[styles.safeArea, { paddingBottom: BottomTabInset }]}
-      >
+      <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
         <ThemedText type="subtitle" style={styles.heading}>
           Trips
         </ThemedText>
@@ -137,7 +135,7 @@ export default function TripsScreen() {
             style={{ flex: 1 }}
             data={dedupedBookings}
             keyExtractor={(item) => String(item.listingId)}
-            contentContainerStyle={{ paddingBottom: Spacing.four }}
+            contentContainerStyle={{ paddingBottom: 0 }}
             scrollEnabled
             renderItem={({ item: b }) => {
               const listing = toListingForCard(b);
@@ -172,18 +170,30 @@ export default function TripsScreen() {
                     </ThemedText>
                   ) : null}
 
-                  <ThemedText
-                    themeColor="textSecondary"
-                    style={{
-                      marginHorizontal: Spacing.four,
-                      marginBottom: Spacing.four,
-                      fontWeight: "600",
-                    }}
-                  >
-                    Already booked
-                  </ThemedText>
+                  {(() => {
+                    const status = String(b.status ?? "")
+                      .trim()
+                      .toUpperCase();
+                    const label =
+                      status === "PENDING"
+                        ? "Pending"
+                        : status === "CANCELLED"
+                          ? "Cancelled"
+                          : "Confirmed";
 
-                  <View style={{ height: 8 }} />
+                    return (
+                      <ThemedText
+                        themeColor="textSecondary"
+                        style={{
+                          marginHorizontal: Spacing.four,
+                          marginBottom: Spacing.four,
+                          fontWeight: "600",
+                        }}
+                      >
+                        {label}
+                      </ThemedText>
+                    );
+                  })()}
                 </View>
               );
             }}

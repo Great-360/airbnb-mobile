@@ -1,5 +1,5 @@
-import { SymbolView } from "expo-symbols";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { SymbolView } from "expo-symbols";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -184,6 +184,18 @@ export default function ProfileScreen() {
       const me = await fetchMeAndSetUser();
       setUser(me);
       setAuthView("authenticated");
+
+      // Role-based routing: HOST users go to host area.
+      const role = String(me.role ?? "").toUpperCase();
+      if (role === "HOST") {
+        // If user came from a specific listing, keep that navigation.
+        if (returnTo && typeof returnTo === "string") {
+          router.replace(returnTo as `/listing/${string}`);
+        } else {
+          router.replace("/host/listings");
+        }
+        return;
+      }
 
       if (returnTo && typeof returnTo === "string") {
         router.replace(returnTo as `/listing/${string}`);

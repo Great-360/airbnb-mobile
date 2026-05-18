@@ -1,6 +1,6 @@
 import { API_BASE_URL } from "@/constants/api";
-import type { Booking, CreateBookingInput } from "@/types/booking";
 import { authHeaders } from "@/store/auth-store";
+import type { Booking, CreateBookingInput } from "@/types/booking";
 
 export type BookingApiError = {
   status: number;
@@ -14,7 +14,10 @@ function asBooking(raw: any): Booking {
   const startDate = raw?.startDate ?? raw?.start_date ?? undefined;
   const endDate = raw?.endDate ?? raw?.end_date ?? undefined;
   const guests = raw?.guests ?? raw?.guestCount ?? undefined;
-  const status = raw?.status ?? undefined;
+  const status =
+    typeof raw?.status === "string"
+      ? raw.status.trim().toUpperCase()
+      : undefined;
   const totalPrice = raw?.totalPrice ?? raw?.total_price ?? undefined;
   const currency = raw?.currency ?? undefined;
   const createdAt = raw?.createdAt ?? raw?.created_at ?? undefined;
@@ -61,7 +64,11 @@ function asBooking(raw: any): Booking {
   };
 }
 
-function toApiError(status: number, message: string, code?: string): BookingApiError {
+function toApiError(
+  status: number,
+  message: string,
+  code?: string,
+): BookingApiError {
   return { status, message, code };
 }
 
@@ -119,4 +126,3 @@ export async function getUserBookings(): Promise<Booking[]> {
   if (!Array.isArray(items)) return [];
   return items.map(asBooking);
 }
-

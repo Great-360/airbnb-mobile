@@ -1,5 +1,5 @@
 import { ThemedText } from "@/components/themed-text";
-import { Spacing } from "@/constants/theme";
+import { Colors, Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 import type { Listing } from "@/types/listing";
 import { Image } from "expo-image";
@@ -27,11 +27,18 @@ export function WishlistRowCard({ listing, onPress }: WishlistRowCardProps) {
       onPress={() => onPress(listing)}
       accessibilityRole="button"
     >
-      <Image
-        source={{ uri: imageUri }}
-        style={styles.thumbnail}
-        contentFit="cover"
-      />
+      <View style={styles.imageWrap}>
+        <Image
+          source={{ uri: imageUri }}
+          style={styles.thumbnail}
+          contentFit="cover"
+        />
+
+        {/* Wishlist rows are always saved, so the heart must stay checked */}
+        <ThemedText style={styles.heart}>♥</ThemedText>
+        <ThemedText style={styles.checkeredOverlay}> </ThemedText>
+      </View>
+
       <View style={styles.textBlock}>
         <ThemedText style={styles.title} numberOfLines={1}>
           {listing.title}
@@ -56,10 +63,34 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
     paddingVertical: Spacing.two,
   },
+  imageWrap: {
+    width: THUMB_SIZE,
+    height: THUMB_SIZE,
+    borderRadius: Spacing.two,
+    overflow: "hidden",
+    justifyContent: "center",
+    alignItems: "center",
+  },
   thumbnail: {
     width: THUMB_SIZE,
     height: THUMB_SIZE,
     borderRadius: Spacing.two,
+  },
+  heart: {
+    position: "absolute",
+    right: Spacing.one,
+    top: Spacing.one,
+    fontSize: 18,
+    color: Colors.light.primary,
+    textShadowColor: "rgba(0,0,0,0.25)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  // keeps layout stable if you later swap to a checkered icon/image
+  checkeredOverlay: {
+    position: "absolute",
+    right: Spacing.one,
+    top: Spacing.one,
   },
   textBlock: {
     flex: 1,
