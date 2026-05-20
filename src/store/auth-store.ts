@@ -11,19 +11,26 @@
 import * as SecureStore from "expo-secure-store";
 
 const TOKEN_KEY = "auth_token";
+let cachedToken: string | null | undefined;
 
 // ── Write token after a successful login ──────────────────────────────────────
 export async function saveToken(token: string): Promise<void> {
+  cachedToken = token;
   await SecureStore.setItemAsync(TOKEN_KEY, token);
 }
 
 // ── Read token (returns null if not logged in) ────────────────────────────────
 export async function getToken(): Promise<string | null> {
-  return SecureStore.getItemAsync(TOKEN_KEY);
+  if (cachedToken !== undefined) {
+    return cachedToken;
+  }
+  cachedToken = await SecureStore.getItemAsync(TOKEN_KEY);
+  return cachedToken;
 }
 
-// ── Delete token on logout ────────────────────────────────────────────────────
+// ── Delete token on logout ──────────────────────────────────────────────────
 export async function clearToken(): Promise<void> {
+  cachedToken = null;
   await SecureStore.deleteItemAsync(TOKEN_KEY);
 }
 

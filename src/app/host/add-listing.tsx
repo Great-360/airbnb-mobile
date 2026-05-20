@@ -332,7 +332,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
     backgroundColor: "transparent",
-    color: "#000",
+    color: Colors.dark.text + Colors.light.text,
   },
   textArea: { minHeight: 110, textAlignVertical: "top" },
 

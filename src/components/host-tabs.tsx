@@ -97,6 +97,7 @@ export default function HostTabs() {
           ),
         }}
       />
+      <Tabs.Screen name="add-listing" options={{ href: null }} />
     </Tabs>
   );
 }

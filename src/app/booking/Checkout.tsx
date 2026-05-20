@@ -3,7 +3,7 @@ import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { Colors, Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
-import { getToken } from "@/store/auth-store";
+import { authHeaders } from "@/store/auth-store";
 import type { CreateBookingInput } from "@/types/booking";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useMemo, useState } from "react";
@@ -39,8 +39,8 @@ export default function CheckoutScreen() {
   const total = useMemo(() => pricePerNight * nights, [pricePerNight, nights]);
 
   async function requireAuthOrRedirect(): Promise<boolean> {
-    const token = await getToken();
-    if (!token) {
+    const headers = await authHeaders();
+    if (!headers || !("Authorization" in headers)) {
       router.replace({
         pathname: "/profile",
         params: { returnTo: `/booking/Checkout` },
