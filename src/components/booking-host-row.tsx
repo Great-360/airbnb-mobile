@@ -54,7 +54,7 @@ export default function HostBookingRow({
         ? "#22c55e"
         : status === "CANCELLED"
           ? "#ff4d4f"
-          : Colors.light.textSecondary;
+          : Colors.light.text;
 
   return (
     <ThemedView
@@ -220,14 +220,14 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.light.primary,
   },
   btnConfirm: {
-    backgroundColor: "rgba(34,197,94,0.14)",
+    backgroundColor: "rgba(34,197,94,0.95)",
   },
   btnCancel: {
-    backgroundColor: "rgba(255,77,79,0.14)",
+    backgroundColor: "rgba(255,77,79,0.95)",
   },
   btnText: {
-    color: "#fff",
-    fontWeight: "700",
+    color: "#ffffff",
+    fontWeight: "800",
     fontSize: 12,
   },
 });

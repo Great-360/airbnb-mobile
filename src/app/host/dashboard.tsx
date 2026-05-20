@@ -1,7 +1,14 @@
-import { useRouter } from "expo-router";
 import { Image } from "expo-image";
-import React, { useCallback, useEffect, useState } from "react";
+import { LinearGradient } from "expo-linear-gradient";
+import { useFocusEffect, useRouter } from "expo-router";
+import React, {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
+  Animated,
   ActivityIndicator,
   Pressable,
   ScrollView,
@@ -9,7 +16,6 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { LinearGradient } from "expo-linear-gradient";
 
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
@@ -17,6 +23,17 @@ import { API_BASE_URL } from "@/constants/api";
 import { Colors, Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 import { authHeaders } from "@/store/auth-store";
+
+// ─── Palette ──────────────────────────────────────────────────────────────────
+
+const P = {
+  primary: Colors.light.primary,   // #FF385C
+  success: "#00C48C",
+  warning: "#FFB547",
+  danger:  "#FF6B6B",
+  chart:   "#FF385C",
+  chartMuted: "rgba(255,56,92,0.18)",
+};
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -27,110 +44,344 @@ type FeaturedListing = {
   pricePerNight: number;
   type: string;
   guests: number;
-  rating: number | null;
-  reviewCount?: number;
   photos: { id: string; url: string }[];
 };
 
-type DashboardState = {
-  listing: FeaturedListing | null;
-  listingCount: number;
-  isLoading: boolean;
-  error: string | null;
+type MonthPoint = { month: string; revenue: number; bookings: number };
+type StatusPoint = { status: string; count: number };
+
+type AnalyticsSummary = {
+  totalRevenue: number;
+  totalBookings: number;
+  avgNightly: number;
+  occupancyRate: number;
 };
 
-// ─── Stat Card ────────────────────────────────────────────────────────────────
+type DashboardData = {
+  listing: FeaturedListing | null;
+  listingCount: number;
+  summary: AnalyticsSummary;
+  revenueByMonth: MonthPoint[];
+  statusBreakdown: StatusPoint[];
+};
 
-function StatCard({
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function shortMonth(ym: string): string {
+  const [year, month] = ym.split("-");
+  const d = new Date(Number(year), Number(month) - 1, 1);
+  return d.toLocaleString("default", { month: "short" });
+}
+
+function fmtMoney(n: number): string {
+  if (n >= 1000) return `$${(n / 1000).toFixed(1)}k`;
+  return `$${n}`;
+}
+
+// ─── KPI Card ─────────────────────────────────────────────────────────────────
+
+function KpiCard({
   label,
   value,
-  icon,
+  accent,
+  sub,
 }: {
   label: string;
   value: string;
-  icon: React.ReactNode;
+  accent: string;
+  sub?: string;
 }) {
   const theme = useTheme();
   return (
     <ThemedView
       type="backgroundElement"
-      style={[styles.statCard, { borderColor: theme.border }]}
+      style={[styles.kpiCard, { borderColor: theme.border }]}
     >
-      <View style={styles.statContent}>
-        <ThemedText style={[styles.statLabel, { color: theme.textSecondary }]}>
-          {label}
-        </ThemedText>
-        <ThemedText style={styles.statValue}>{value}</ThemedText>
+      <View style={[styles.kpiDot, { backgroundColor: accent + "28" }]}>
+        <View style={[styles.kpiDotInner, { backgroundColor: accent }]} />
       </View>
-      <View style={styles.statIcon}>{icon}</View>
+      <ThemedText style={[styles.kpiLabel, { color: theme.textSecondary }]}>
+        {label}
+      </ThemedText>
+      <ThemedText style={[styles.kpiValue, { color: theme.text }]}>
+        {value}
+      </ThemedText>
+      {sub ? (
+        <ThemedText style={[styles.kpiSub, { color: theme.textSecondary }]}>
+          {sub}
+        </ThemedText>
+      ) : null}
     </ThemedView>
   );
 }
 
-// ─── Inline icons ─────────────────────────────────────────────────────────────
+// ─── Revenue Bar Chart ────────────────────────────────────────────────────────
 
-function MiniChartIcon() {
+const BAR_MAX_H = 100;
+
+function RevenueChart({ data }: { data: MonthPoint[] }) {
+  const theme = useTheme();
+  const barAnims = useRef<Animated.Value[]>([]);
+
+  useEffect(() => {
+    if (data.length === 0) return;
+    barAnims.current = data.map(() => new Animated.Value(0));
+    Animated.stagger(
+      55,
+      barAnims.current.map((anim) =>
+        Animated.spring(anim, {
+          toValue: 1,
+          useNativeDriver: false,
+          tension: 52,
+          friction: 7,
+        }),
+      ),
+    ).start();
+  }, [data]);
+
+  const maxRevenue = Math.max(...data.map((d) => d.revenue), 1);
+
   return (
-    <View style={styles.iconWrap}>
-      <View style={[styles.bar, { height: 12, opacity: 0.5 }]} />
-      <View style={[styles.bar, { height: 20 }]} />
-      <View style={[styles.bar, { height: 16, opacity: 0.7 }]} />
-      <View style={[styles.bar, { height: 24 }]} />
-    </View>
+    <ThemedView
+      type="backgroundElement"
+      style={[styles.chartCard, { borderColor: theme.border }]}
+    >
+      <View style={styles.chartHeader}>
+        <ThemedText style={styles.chartTitle}>Revenue</ThemedText>
+        <ThemedText style={[styles.chartSub, { color: theme.textSecondary }]}>
+          Last 6 months
+        </ThemedText>
+      </View>
+
+      {/* Y-axis ghost lines */}
+      <View style={styles.chartBody}>
+        <View style={styles.gridLines} pointerEvents="none">
+          {[1, 0.66, 0.33].map((f) => (
+            <View
+              key={f}
+              style={[
+                styles.gridLine,
+                {
+                  bottom: f * BAR_MAX_H,
+                  borderColor: theme.border,
+                },
+              ]}
+            />
+          ))}
+        </View>
+
+        {/* Bars */}
+        <View style={styles.barsRow}>
+          {data.map((item, i) => {
+            const targetH =
+              maxRevenue > 0
+                ? Math.max(4, (item.revenue / maxRevenue) * BAR_MAX_H)
+                : 4;
+            const anim = barAnims.current[i];
+            const animHeight = anim
+              ? anim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0, targetH],
+                })
+              : 0;
+
+            const isTop = item.revenue === maxRevenue && item.revenue > 0;
+
+            return (
+              <View key={item.month} style={styles.barCol}>
+                {/* Revenue label above bar */}
+                {item.revenue > 0 && (
+                  <ThemedText
+                    style={[
+                      styles.barTopLabel,
+                      {
+                        color: isTop ? P.primary : theme.textSecondary,
+                        fontWeight: isTop ? "700" : "400",
+                      },
+                    ]}
+                  >
+                    {fmtMoney(item.revenue)}
+                  </ThemedText>
+                )}
+
+                {/* Bar */}
+                <View style={styles.barTrack}>
+                  <Animated.View
+                    style={[
+                      styles.barFill,
+                      {
+                        height: animHeight,
+                        backgroundColor: isTop ? P.primary : P.chartMuted,
+                        borderTopLeftRadius: 6,
+                        borderTopRightRadius: 6,
+                      },
+                    ]}
+                  />
+                </View>
+
+                {/* Month label */}
+                <ThemedText
+                  style={[styles.barLabel, { color: theme.textSecondary }]}
+                >
+                  {shortMonth(item.month)}
+                </ThemedText>
+              </View>
+            );
+          })}
+        </View>
+      </View>
+    </ThemedView>
   );
 }
 
-function PieIcon() {
-  return (
-    <View style={styles.pieWrap}>
-      <View style={styles.pieOuter}>
-        <View style={styles.pieInner} />
-      </View>
-    </View>
-  );
-}
+// ─── Status Breakdown ─────────────────────────────────────────────────────────
 
-function RevenueIcon() {
+function StatusBreakdown({ data }: { data: StatusPoint[] }) {
+  const theme = useTheme();
+  const totalCount = data.reduce((s, d) => s + d.count, 0);
+  const segAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.spring(segAnim, {
+      toValue: 1,
+      useNativeDriver: false,
+      tension: 40,
+      friction: 8,
+    }).start();
+  }, [data]);
+
+  const colorFor = (status: string) => {
+    if (status === "CONFIRMED") return P.success;
+    if (status === "PENDING")   return P.warning;
+    return P.danger;
+  };
+
+  const labelFor = (status: string) => {
+    if (status === "CONFIRMED") return "Confirmed";
+    if (status === "PENDING")   return "Pending";
+    return "Cancelled";
+  };
+
   return (
-    <View style={styles.revenueIconWrap}>
-      <View style={styles.coinStack}>
-        <View style={[styles.coin, { marginTop: 6 }]} />
-        <View style={[styles.coin, { marginTop: 3 }]} />
-        <View style={styles.coin} />
+    <ThemedView
+      type="backgroundElement"
+      style={[styles.chartCard, { borderColor: theme.border }]}
+    >
+      <View style={styles.chartHeader}>
+        <ThemedText style={styles.chartTitle}>Bookings</ThemedText>
+        <ThemedText style={[styles.chartSub, { color: theme.textSecondary }]}>
+          {totalCount} total
+        </ThemedText>
       </View>
-      <View style={styles.arrowUp}>
-        <View style={styles.arrowHead} />
-        <View style={styles.arrowLine} />
+
+      {/* Segmented bar */}
+      <View style={styles.segBar}>
+        {totalCount === 0 ? (
+          <View
+            style={[
+              styles.segFill,
+              { flex: 1, backgroundColor: theme.border, borderRadius: 6 },
+            ]}
+          />
+        ) : (
+          data
+            .filter((d) => d.count > 0)
+            .map((d, i, arr) => {
+              const flex = d.count / totalCount;
+              const isFirst = i === 0;
+              const isLast = i === arr.length - 1;
+              return (
+                <Animated.View
+                  key={d.status}
+                  style={[
+                    styles.segFill,
+                    {
+                      flex: segAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0, flex],
+                      }),
+                      backgroundColor: colorFor(d.status),
+                      borderTopLeftRadius: isFirst ? 6 : 0,
+                      borderBottomLeftRadius: isFirst ? 6 : 0,
+                      borderTopRightRadius: isLast ? 6 : 0,
+                      borderBottomRightRadius: isLast ? 6 : 0,
+                    },
+                  ]}
+                />
+              );
+            })
+        )}
       </View>
-    </View>
+
+      {/* Legend */}
+      <View style={styles.legend}>
+        {data.map((d) => (
+          <View key={d.status} style={styles.legendItem}>
+            <View
+              style={[styles.legendDot, { backgroundColor: colorFor(d.status) }]}
+            />
+            <ThemedText
+              style={[styles.legendLabel, { color: theme.textSecondary }]}
+            >
+              {labelFor(d.status)}
+            </ThemedText>
+            <ThemedText style={styles.legendCount}>{d.count}</ThemedText>
+          </View>
+        ))}
+      </View>
+    </ThemedView>
   );
 }
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
+const DEFAULT_SUMMARY: AnalyticsSummary = {
+  totalRevenue: 0,
+  totalBookings: 0,
+  avgNightly: 0,
+  occupancyRate: 0,
+};
+
 export default function HostDashboardScreen() {
   const router = useRouter();
   const theme = useTheme();
 
-  const [state, setState] = useState<DashboardState>({
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError]         = useState<string | null>(null);
+  const [data, setData]           = useState<DashboardData>({
     listing: null,
     listingCount: 0,
-    isLoading: true,
-    error: null,
+    summary: DEFAULT_SUMMARY,
+    revenueByMonth: [],
+    statusBreakdown: [],
   });
 
   const load = useCallback(async () => {
-    setState((s) => ({ ...s, isLoading: true, error: null }));
+    setIsLoading(true);
+    setError(null);
     try {
       const headers = await authHeaders();
-      const res = await fetch(`${API_BASE_URL}/auth/me`, { headers });
-      if (!res.ok) throw new Error(`Failed to load profile (${res.status})`);
-      const me = await res.json();
 
+      // Fetch both endpoints in parallel
+      const [meRes, analyticsRes] = await Promise.all([
+        fetch(`${API_BASE_URL}/auth/me`, { headers }),
+        fetch(`${API_BASE_URL}/analytics/host`, { headers }),
+      ]);
+
+      if (!meRes.ok)
+        throw new Error(`Profile error (${meRes.status})`);
+      if (!analyticsRes.ok)
+        throw new Error(`Analytics error (${analyticsRes.status})`);
+
+      const [me, analytics] = await Promise.all([
+        meRes.json(),
+        analyticsRes.json(),
+      ]);
+
+      // Parse listings
       const rawListings: any[] = Array.isArray(me.listings) ? me.listings : [];
-      const listingCount = rawListings.length;
-
       const first = rawListings[0] ?? null;
+
       const listing: FeaturedListing | null = first
         ? {
             id: String(first.id ?? ""),
@@ -139,9 +390,6 @@ export default function HostDashboardScreen() {
             pricePerNight: Number(first.pricePerNight ?? 0),
             type: String(first.type ?? "APARTMENT"),
             guests: Number(first.guests ?? 1),
-            rating: first.rating != null ? Number(first.rating) : null,
-            reviewCount:
-              first.reviewCount != null ? Number(first.reviewCount) : undefined,
             photos: Array.isArray(first.photos)
               ? first.photos
                   .map((p: any) => ({
@@ -158,31 +406,43 @@ export default function HostDashboardScreen() {
           }
         : null;
 
-      setState({ listing, listingCount, isLoading: false, error: null });
+      setData({
+        listing,
+        listingCount: rawListings.length,
+        summary: analytics.summary ?? DEFAULT_SUMMARY,
+        revenueByMonth: Array.isArray(analytics.revenueByMonth)
+          ? analytics.revenueByMonth
+          : [],
+        statusBreakdown: Array.isArray(analytics.statusBreakdown)
+          ? analytics.statusBreakdown
+          : [],
+      });
     } catch (e) {
-      setState((s) => ({
-        ...s,
-        isLoading: false,
-        error: e instanceof Error ? e.message : "Something went wrong",
-      }));
+      setError(e instanceof Error ? e.message : "Something went wrong");
+    } finally {
+      setIsLoading(false);
     }
   }, []);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load]),
+  );
 
-  const { listing, listingCount, isLoading, error } = state;
-  const coverUrl = listing?.photos?.[0]?.url ?? null;
-
+  // ── Loading ────────────────────────────────────────────────────────────────
   if (isLoading) {
     return (
       <ThemedView style={styles.centered}>
-        <ActivityIndicator size="large" color={Colors.light.primary} />
+        <ActivityIndicator size="large" color={P.primary} />
+        <ThemedText style={[styles.loadingLabel, { color: theme.textSecondary }]}>
+          Loading analytics…
+        </ThemedText>
       </ThemedView>
     );
   }
 
+  // ── Error ──────────────────────────────────────────────────────────────────
   if (error) {
     return (
       <ThemedView style={styles.centered}>
@@ -191,7 +451,7 @@ export default function HostDashboardScreen() {
           {error}
         </ThemedText>
         <Pressable
-          style={[styles.retryBtn, { backgroundColor: Colors.light.primary }]}
+          style={[styles.retryBtn, { backgroundColor: P.primary }]}
           onPress={load}
         >
           <ThemedText style={styles.retryText}>Try again</ThemedText>
@@ -200,6 +460,11 @@ export default function HostDashboardScreen() {
     );
   }
 
+  const { listing, listingCount, summary, revenueByMonth, statusBreakdown } =
+    data;
+  const coverUrl = listing?.photos?.[0]?.url ?? null;
+
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
@@ -207,15 +472,25 @@ export default function HostDashboardScreen() {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scroll}
         >
-          {/* Header */}
+          {/* ── Header ──────────────────────────────────────────────────── */}
           <View style={styles.header}>
-            <ThemedText style={styles.heading}>Dashboard</ThemedText>
-            <ThemedText style={[styles.subheading, { color: theme.textSecondary }]}>
-              {listingCount} listing{listingCount !== 1 ? "s" : ""}
-            </ThemedText>
+            <View>
+              <ThemedText style={styles.heading}>Dashboard</ThemedText>
+              <ThemedText
+                style={[styles.subheading, { color: theme.textSecondary }]}
+              >
+                {listingCount} listing{listingCount !== 1 ? "s" : ""}
+              </ThemedText>
+            </View>
+            <Pressable
+              style={[styles.addBtn, { backgroundColor: P.primary }]}
+              onPress={() => router.push("/host/add-listing")}
+            >
+              <ThemedText style={styles.addBtnText}>+ Add</ThemedText>
+            </Pressable>
           </View>
 
-          {/* Hero card */}
+          {/* ── Hero card ───────────────────────────────────────────────── */}
           <Pressable
             style={styles.heroCard}
             onPress={() =>
@@ -224,7 +499,6 @@ export default function HostDashboardScreen() {
                 : router.push("/host/add-listing")
             }
           >
-            {/* Background */}
             {coverUrl ? (
               <>
                 <Image
@@ -233,7 +507,7 @@ export default function HostDashboardScreen() {
                   contentFit="cover"
                 />
                 <LinearGradient
-                  colors={["rgba(255,80,30,0.6)", "rgba(255,200,40,0.5)"]}
+                  colors={["rgba(255,80,30,0.55)", "rgba(255,200,40,0.45)"]}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 1 }}
                   style={StyleSheet.absoluteFill}
@@ -259,83 +533,78 @@ export default function HostDashboardScreen() {
             ].map((pos, i) => (
               <View
                 key={i}
-                style={[
-                  styles.hexDot,
-                  { top: pos.top, left: pos.left },
-                ]}
                 pointerEvents="none"
+                style={[styles.hexDot, { top: pos.top, left: pos.left }]}
               />
             ))}
 
-            {/* Card content */}
             <View style={styles.heroContent}>
               <View style={styles.typePill}>
                 <ThemedText style={styles.typePillText}>
                   {listing
-                    ? listing.type.charAt(0) + listing.type.slice(1).toLowerCase()
+                    ? listing.type.charAt(0) +
+                      listing.type.slice(1).toLowerCase()
                     : "Host"}
                 </ThemedText>
               </View>
-
               <ThemedText style={styles.heroTitle} numberOfLines={2}>
-                {listing ? listing.title : "No listings yet"}
+                {listing?.title ?? "No listings yet"}
               </ThemedText>
-
               <ThemedText style={styles.heroSub} numberOfLines={1}>
                 {listing
                   ? `${listing.location}  ·  Up to ${listing.guests} guests`
                   : "Create your first listing to start hosting"}
               </ThemedText>
-
-              <Pressable
-                style={styles.heroBtn}
-                onPress={() =>
-                  listing
-                    ? router.push(`/listing/${listing.id}` as any)
-                    : router.push("/host/add-listing")
-                }
-              >
+              <View style={styles.heroBtn}>
                 <ThemedText style={styles.heroBtnText}>
                   {listing ? "View listing" : "Add listing"}
                 </ThemedText>
-              </Pressable>
+              </View>
             </View>
           </Pressable>
 
-          {/* Stat cards */}
-          <View style={styles.statsCol}>
-            <StatCard
-              label="Total Listings"
-              value={String(listingCount)}
-              icon={<MiniChartIcon />}
+          {/* ── KPI grid ────────────────────────────────────────────────── */}
+          <View style={styles.kpiGrid}>
+            <KpiCard
+              label="Revenue"
+              value={fmtMoney(summary.totalRevenue)}
+              accent={P.success}
+              sub="confirmed"
             />
-
-            <StatCard
-              label="Price / night"
-              value={
-                listing ? `$${listing.pricePerNight.toLocaleString()}` : "—"
-              }
-              icon={<PieIcon />}
+            <KpiCard
+              label="Bookings"
+              value={String(summary.totalBookings)}
+              accent={P.primary}
+              sub="confirmed"
             />
-
-            <StatCard
-              label="Rating"
-              value={
-                listing?.rating != null
-                  ? `★ ${listing.rating.toFixed(1)}`
-                  : "—"
-              }
-              icon={<RevenueIcon />}
+            <KpiCard
+              label="Avg / night"
+              value={fmtMoney(summary.avgNightly)}
+              accent={P.warning}
+            />
+            <KpiCard
+              label="Occupancy"
+              value={`${summary.occupancyRate}%`}
+              accent={P.chart}
+              sub="last 30 days"
             />
           </View>
 
-          {/* Manage shortcut */}
+          {/* ── Revenue bar chart ────────────────────────────────────────── */}
+          <RevenueChart data={revenueByMonth} />
+
+          {/* ── Status breakdown ─────────────────────────────────────────── */}
+          <StatusBreakdown data={statusBreakdown} />
+
+          {/* ── Manage shortcut ──────────────────────────────────────────── */}
           <Pressable
             style={[styles.manageRow, { borderColor: theme.border }]}
             onPress={() => router.push("/host/listings")}
           >
-            <ThemedText style={styles.manageText}>Manage all listings</ThemedText>
-            <ThemedText style={[styles.manageArrow, { color: Colors.light.primary }]}>
+            <ThemedText style={styles.manageText}>
+              Manage all listings
+            </ThemedText>
+            <ThemedText style={[styles.manageArrow, { color: P.primary }]}>
               →
             </ThemedText>
           </Pressable>
@@ -347,24 +616,35 @@ export default function HostDashboardScreen() {
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
-const ICON_COLOR = Colors.light.primary;
-
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  safeArea: { flex: 1, paddingHorizontal: Spacing.four },
-  scroll: { paddingBottom: Spacing.six },
-  centered: {
+  container:    { flex: 1 },
+  safeArea:     { flex: 1, paddingHorizontal: Spacing.four },
+  scroll:       { paddingBottom: 80 },
+  centered:     {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
     gap: Spacing.three,
     padding: Spacing.five,
   },
+  loadingLabel: { fontSize: 14, marginTop: Spacing.two },
 
   // Header
-  header: { marginTop: Spacing.five, marginBottom: Spacing.four, gap: 2 },
-  heading: { fontSize: 28, fontWeight: "800", lineHeight: 34 },
-  subheading: { fontSize: 14 },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: Spacing.five,
+    marginBottom: Spacing.four,
+  },
+  heading:    { fontSize: 28, fontWeight: "800", lineHeight: 34 },
+  subheading: { fontSize: 13, marginTop: 2 },
+  addBtn: {
+    paddingHorizontal: Spacing.three,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  addBtnText: { color: "#fff", fontWeight: "700", fontSize: 13 },
 
   // Hero card
   heroCard: {
@@ -372,7 +652,6 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     height: 210,
     marginBottom: Spacing.four,
-    position: "relative",
     justifyContent: "flex-end",
   },
   hexDot: {
@@ -381,17 +660,17 @@ const styles = StyleSheet.create({
     height: 38,
     borderRadius: 5,
     borderWidth: 1.5,
-    borderColor: "rgba(255,255,255,0.22)",
+    borderColor: "rgba(255,255,255,0.2)",
     transform: [{ rotate: "15deg" }],
   },
-  heroContent: { padding: Spacing.four, gap: Spacing.one },
+  heroContent:  { padding: Spacing.four, gap: 4 },
   typePill: {
     alignSelf: "flex-start",
     backgroundColor: "rgba(255,255,255,0.25)",
     borderRadius: 20,
     paddingHorizontal: 10,
     paddingVertical: 3,
-    marginBottom: Spacing.one,
+    marginBottom: 4,
   },
   typePillText: {
     color: "#fff",
@@ -400,7 +679,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   heroTitle: { color: "#fff", fontSize: 20, fontWeight: "800", lineHeight: 26 },
-  heroSub: { color: "rgba(255,255,255,0.85)", fontSize: 13, lineHeight: 18 },
+  heroSub:   { color: "rgba(255,255,255,0.85)", fontSize: 13 },
   heroBtn: {
     alignSelf: "flex-start",
     marginTop: Spacing.two,
@@ -411,85 +690,124 @@ const styles = StyleSheet.create({
   },
   heroBtnText: { color: "#333", fontWeight: "700", fontSize: 13 },
 
-  // Stat cards
-  statsCol: { gap: Spacing.three, marginBottom: Spacing.four },
-  statCard: {
+  // KPI grid
+  kpiGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: Spacing.three,
+    marginBottom: Spacing.four,
+  },
+  kpiCard: {
+    width: "47%",
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: Spacing.three,
+    gap: 4,
+  },
+  kpiDot: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 4,
+  },
+  kpiDotInner: { width: 10, height: 10, borderRadius: 5 },
+  kpiLabel:    { fontSize: 12 },
+  kpiValue:    { fontSize: 22, fontWeight: "800", lineHeight: 28 },
+  kpiSub:      { fontSize: 11 },
+
+  // Chart card shared
+  chartCard: {
     borderRadius: 16,
     borderWidth: StyleSheet.hairlineWidth,
     padding: Spacing.four,
+    marginBottom: Spacing.three,
+    gap: Spacing.three,
+  },
+  chartHeader: {
     flexDirection: "row",
-    alignItems: "center",
     justifyContent: "space-between",
+    alignItems: "baseline",
   },
-  statContent: { gap: 4 },
-  statLabel: { fontSize: 13 },
-  statValue: { fontSize: 26, fontWeight: "800", lineHeight: 32 },
-  statIcon: { width: 56, alignItems: "center" },
+  chartTitle: { fontSize: 16, fontWeight: "700" },
+  chartSub:   { fontSize: 12 },
 
-  // Bar chart icon
-  iconWrap: {
+  // Bar chart
+  chartBody: {
+    height: BAR_MAX_H + 36,
+    position: "relative",
+  },
+  gridLines: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: "flex-end",
+  },
+  gridLine: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderStyle: "dashed",
+  },
+  barsRow: {
     flexDirection: "row",
     alignItems: "flex-end",
-    gap: 4,
-    height: 28,
+    justifyContent: "space-between",
+    height: BAR_MAX_H + 36,
+    paddingBottom: 24,     // room for month labels
   },
-  bar: { width: 7, borderRadius: 3, backgroundColor: ICON_COLOR },
-
-  // Pie icon
-  pieWrap: { alignItems: "center" },
-  pieOuter: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    borderWidth: 5,
-    borderColor: ICON_COLOR,
-    borderRightColor: "transparent",
-    borderBottomColor: "transparent",
-    transform: [{ rotate: "45deg" }],
+  barCol: {
+    flex: 1,
     alignItems: "center",
-    justifyContent: "center",
+    justifyContent: "flex-end",
+    height: BAR_MAX_H + 36,
+    paddingHorizontal: 3,
   },
-  pieInner: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: ICON_COLOR,
-    opacity: 0.25,
+  barTrack: {
+    width: "100%",
+    height: BAR_MAX_H,
+    justifyContent: "flex-end",
+  },
+  barFill: {
+    width: "100%",
+  },
+  barTopLabel: {
+    fontSize: 9,
+    marginBottom: 3,
+    textAlign: "center",
+  },
+  barLabel: {
+    fontSize: 10,
+    marginTop: 6,
+    textAlign: "center",
   },
 
-  // Revenue icon
-  revenueIconWrap: {
+  // Status breakdown
+  segBar: {
     flexDirection: "row",
-    alignItems: "flex-end",
+    height: 12,
+    borderRadius: 6,
+    overflow: "hidden",
+    gap: 2,
+  },
+  segFill: { height: "100%" },
+  legend: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    marginTop: Spacing.one,
+  },
+  legendItem: {
+    flexDirection: "row",
+    alignItems: "center",
     gap: 5,
   },
-  coinStack: { alignItems: "center", gap: 2 },
-  coin: {
-    width: 22,
-    height: 7,
+  legendDot: {
+    width: 8,
+    height: 8,
     borderRadius: 4,
-    backgroundColor: ICON_COLOR,
-    opacity: 0.85,
   },
-  arrowUp: { alignItems: "center", marginBottom: 4 },
-  arrowLine: {
-    width: 2.5,
-    height: 14,
-    backgroundColor: ICON_COLOR,
-    borderRadius: 2,
-  },
-  arrowHead: {
-    width: 0,
-    height: 0,
-    borderLeftWidth: 5,
-    borderRightWidth: 5,
-    borderBottomWidth: 8,
-    borderStyle: "solid",
-    borderLeftColor: "transparent",
-    borderRightColor: "transparent",
-    borderBottomColor: ICON_COLOR,
-    marginBottom: -2,
-  },
+  legendLabel: { fontSize: 12 },
+  legendCount: { fontSize: 12, fontWeight: "700" },
 
   // Manage row
   manageRow: {
@@ -500,13 +818,14 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingHorizontal: Spacing.four,
     paddingVertical: Spacing.three,
+    marginTop: Spacing.one,
   },
-  manageText: { fontSize: 15, fontWeight: "600" },
+  manageText:  { fontSize: 15, fontWeight: "600" },
   manageArrow: { fontSize: 20, fontWeight: "700" },
 
   // Error
   errorTitle: { fontSize: 18, fontWeight: "600", textAlign: "center" },
-  errorBody: { fontSize: 14, textAlign: "center" },
+  errorBody:  { fontSize: 14, textAlign: "center" },
   retryBtn: {
     paddingHorizontal: Spacing.four,
     paddingVertical: Spacing.two,

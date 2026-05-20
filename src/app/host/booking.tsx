@@ -4,6 +4,7 @@ import {
   FlatList,
   Pressable,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   TextInput,
   View,
@@ -186,44 +187,51 @@ export default function HostBookingScreen() {
           </View>
         ) : (
           <View style={styles.tableWrap}>
-            <View style={styles.horizontalScroller}>
-              <FlatList
-                data={filteredBookings}
-                keyExtractor={(item) => String(item.id)}
-                contentContainerStyle={styles.listContent}
-                refreshControl={
-                  <RefreshControl
-                    refreshing={refreshing}
-                    onRefresh={onRefresh}
-                  />
-                }
-                ListHeaderComponent={() => (
-                  <View style={styles.tableHeader}>
-                    <ThemedText style={styles.headerCell}>Customer</ThemedText>
-                    <ThemedText style={styles.headerCell}>
-                      Booking date
-                    </ThemedText>
-                    <ThemedText style={styles.headerCell}>Persons</ThemedText>
-                    <ThemedText style={styles.headerCell}>Price</ThemedText>
-                    <ThemedText style={styles.headerCell}>Client</ThemedText>
-                    <ThemedText style={styles.headerCell}>Status</ThemedText>
-                    <ThemedText
-                      style={[styles.headerCell, styles.headerActionCell]}
-                    >
-                      Action
-                    </ThemedText>
-                  </View>
-                )}
-                renderItem={({ item }) => (
-                  <BookingHostRow
-                    booking={item}
-                    onConfirm={handleConfirm}
-                    onCancel={handleCancel}
-                  />
-                )}
-                ItemSeparatorComponent={() => <View style={styles.separator} />}
-              />
-            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator>
+              <View>
+                <FlatList
+                  data={filteredBookings}
+                  scrollEnabled={false}
+                  keyExtractor={(item) => String(item.id)}
+                  contentContainerStyle={styles.listContent}
+                  refreshControl={
+                    <RefreshControl
+                      refreshing={refreshing}
+                      onRefresh={onRefresh}
+                    />
+                  }
+                  renderItem={({ item }) => (
+                    <BookingHostRow
+                      booking={item}
+                      onConfirm={handleConfirm}
+                      onCancel={handleCancel}
+                    />
+                  )}
+                  ItemSeparatorComponent={() => (
+                    <View style={styles.separator} />
+                  )}
+                  ListHeaderComponent={() => (
+                    <View style={styles.tableHeader}>
+                      <ThemedText style={styles.headerCell}>
+                        Customer
+                      </ThemedText>
+                      <ThemedText style={styles.headerCell}>
+                        Booking date
+                      </ThemedText>
+                      <ThemedText style={styles.headerCell}>Persons</ThemedText>
+                      <ThemedText style={styles.headerCell}>Price</ThemedText>
+                      <ThemedText style={styles.headerCell}>Client</ThemedText>
+                      <ThemedText style={styles.headerCell}>Status</ThemedText>
+                      <ThemedText
+                        style={[styles.headerCell, styles.headerActionCell]}
+                      >
+                        Action
+                      </ThemedText>
+                    </View>
+                  )}
+                />
+              </View>
+            </ScrollView>
           </View>
         )}
       </View>
