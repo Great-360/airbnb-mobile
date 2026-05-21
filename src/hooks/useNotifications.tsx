@@ -1,3 +1,4 @@
+import * as Notifications from "expo-notifications";
 import React, {
   createContext,
   useContext,
@@ -5,16 +6,37 @@ import React, {
   useMemo,
   useRef,
 } from "react";
+import { Platform } from "react-native";
 
 type NotificationContextValue = {
-  // Keep same external API, but implement as no-op if Expo Go blocks remote notifications.
-  scheduleNotificationAsync: (request: unknown) => Promise<string | undefined>;
+  scheduleNotificationAsync: (
+    request: Notifications.NotificationRequestInput,
+  ) => Promise<string | undefined>;
   cancelScheduledNotificationAsync: () => Promise<void>;
 };
 
 const NotificationsContext = createContext<
   NotificationContextValue | undefined
 >(undefined);
+
+function shouldKeepExpoGoNoop() {
+  // Expo Go does not support remote notifications on Android (SDK 53+).
+  // Local notifications still work, but the safest behavior for this app
+  // is to keep scheduling disabled in Expo Go.
+  //
+  // We try to detect Expo Go at runtime; if we can't, we fall back to enabled.
+  const expoGo =
+    typeof navigator !== "undefined" &&
+    // Some environments expose something like "Expo Go".
+    String(navigator.userAgent || "")
+      .toLowerCase()
+      .includes("exponent") &&
+    String(navigator.userAgent || "")
+      .toLowerCase()
+      .includes("go");
+  // On native, this heuristic won't work; enable by default.
+  return expoGo;
+}
 
 export function NotificationsProvider({
   children,
@@ -23,26 +45,72 @@ export function NotificationsProvider({
 }) {
   const scheduledNotificationIdRef = useRef<string>("");
 
-  // Expo Go (SDK 53) blocks remote notifications. Also, scheduling remote notifications
-  // is not reliable without a development build.
-  // We intentionally keep this provider as a safe no-op in Expo Go.
   useEffect(() => {
-    // no-op
+    // Configure foreground notification behavior.
+    // This is safe in both dev and release builds.
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldPlaySound: false,
+        shouldSetBadge: false,
+        shouldShowBanner: true,
+        shouldShowList: true,
+      }),
+    });
   }, []);
 
   const scheduleNotificationAsync = async (
-    request: unknown,
+    request: Notifications.NotificationRequestInput,
   ): Promise<string | undefined> => {
-    console.warn(
-      "Notifications scheduling is disabled in this build. Use a development build for Expo notifications.",
-      request,
-    );
-    return undefined;
+    if (shouldKeepExpoGoNoop()) {
+      console.warn("Notifications scheduling is disabled in Expo Go.", request);
+      return undefined;
+    }
+
+    try {
+      // Android 13+ requires permission prompt. Also create a channel before token/permission flows.
+      if (Platform.OS === "android") {
+        await Notifications.setNotificationChannelAsync("default", {
+          name: "Default",
+          importance: Notifications.AndroidImportance.MAX,
+        });
+      }
+
+      const permissions = await Notifications.getPermissionsAsync();
+      let finalStatus = permissions.granted;
+      if (!finalStatus) {
+        const req = await Notifications.requestPermissionsAsync();
+        finalStatus = req.granted;
+      }
+
+      if (!finalStatus) {
+        console.warn("Notification permissions not granted");
+        return undefined;
+      }
+
+      const id = await Notifications.scheduleNotificationAsync(request);
+      scheduledNotificationIdRef.current = id;
+      return id;
+    } catch (e) {
+      console.warn("Failed to schedule notification", e);
+      return undefined;
+    }
   };
 
   const cancelScheduledNotificationAsync = async () => {
-    // no-op
-    scheduledNotificationIdRef.current = "";
+    if (shouldKeepExpoGoNoop()) {
+      scheduledNotificationIdRef.current = "";
+      return;
+    }
+
+    try {
+      if (scheduledNotificationIdRef.current) {
+        await Notifications.cancelScheduledNotificationAsync(
+          scheduledNotificationIdRef.current,
+        );
+      }
+    } finally {
+      scheduledNotificationIdRef.current = "";
+    }
   };
 
   const value = useMemo<NotificationContextValue>(
