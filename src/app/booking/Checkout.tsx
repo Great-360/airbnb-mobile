@@ -8,7 +8,8 @@ import type { CreateBookingInput } from "@/types/booking";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
-import Toast from "react-native-toast-message";
+
+import { showToast } from "@/utils/toast";
 
 export default function CheckoutScreen() {
   const theme = useTheme();
@@ -90,10 +91,9 @@ export default function CheckoutScreen() {
         return;
       }
       setError(err?.message ?? "Failed to create booking.");
-      Toast.show({
+      showToast({
         type: "error",
         text1: "Booking failed",
-        position: "bottom",
       });
     } finally {
       setIsSubmitting(false);

@@ -6,14 +6,18 @@
 // Usage:  import { showToast } from "@/utils/toast";
 //         showToast({ type: "success", text1: "Added to wishlist" });
 
+import {
+  addNotification,
+  type NotificationType,
+} from "@/store/notification-store";
 import Toast from "react-native-toast-message";
-import { addNotification, type NotificationType } from "@/store/notification-store";
 
 type ToastParams = Parameters<typeof Toast.show>[0];
 
 export function showToast(params: ToastParams): void {
-  // Show the regular in-app toast
-  Toast.show(params);
+  // Record into local store so it shows up in Inbox > Notifications.
+  // (Toast UI intentionally disabled to replace toasts with notifications.)
+  // Toast.show(params);
 
   // Map toast type → notification type
   const typeMap: Record<string, NotificationType> = {
@@ -21,8 +25,7 @@ export function showToast(params: ToastParams): void {
     error: "error",
     info: "info",
   };
-  const type: NotificationType =
-    typeMap[params.type ?? "info"] ?? "info";
+  const type: NotificationType = typeMap[params.type ?? "info"] ?? "info";
 
   const title = params.text1 ?? "";
   const body =

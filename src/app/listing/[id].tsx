@@ -36,7 +36,8 @@ import {
   StyleSheet,
   View,
 } from "react-native";
-import Toast from "react-native-toast-message";
+
+import { showToast } from "@/utils/toast";
 
 export default function ListingDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -135,21 +136,20 @@ export default function ListingDetailScreen() {
     if (!result.ok) {
       setIsWishlisted(wasSaved);
       if (result.reason === "unauthenticated") return;
-      Toast.show({
+      showToast({
         type: "error",
         text1:
           result.reason === "network_error"
             ? "Network error. Try again."
             : "Failed to update wishlist",
-        position: "bottom",
       });
+
       return;
     }
 
-    Toast.show({
+    showToast({
       type: wasSaved ? "info" : "success",
       text1: wasSaved ? "Removed from wishlist" : "Added to wishlist",
-      position: "bottom",
     });
   }
 

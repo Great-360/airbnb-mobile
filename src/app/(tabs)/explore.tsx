@@ -1,5 +1,6 @@
 // src/app/explore.tsx  — updated to sync wishlist hearts with the API
 
+import { showToast } from "@/utils/toast";
 import { SymbolView } from "expo-symbols";
 import React, { useCallback, useEffect, useState } from "react";
 import {
@@ -9,19 +10,18 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  View,
 } from "react-native";
-import { View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Toast from "react-native-toast-message";
 
+import { ListingCard } from "@/components/listing-card";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
-import { ListingCard } from "@/components/listing-card";
 import { API_BASE_URL } from "@/constants/api";
 import { BottomTabInset, Colors, Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
-import type { Listing } from "@/types/listing";
 import { authHeaders } from "@/store/auth-store";
+import type { Listing } from "@/types/listing";
 import { toggleWishlist } from "@/utils/wishlist-toggle";
 import { useRouter } from "expo-router";
 
@@ -137,21 +137,20 @@ export default function ExploreScreen() {
         return next;
       });
       if (result.reason === "unauthenticated") return;
-      Toast.show({
+      showToast({
         type: "error",
         text1:
           result.reason === "network_error"
             ? "Network error. Try again."
             : "Failed to update wishlist",
-        position: "bottom",
+        // Toast UI disabled; notification only.
       });
       return;
     }
 
-    Toast.show({
+    showToast({
       type: wasSaved ? "info" : "success",
       text1: wasSaved ? "Removed from wishlist" : "Added to wishlist",
-      position: "bottom",
     });
   }
 

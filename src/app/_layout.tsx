@@ -9,25 +9,28 @@ import { useColorScheme } from "react-native";
 import Toast from "react-native-toast-message";
 
 import { AnimatedSplashOverlay } from "@/components/animated-icon";
+import { NotificationsProvider } from "@/hooks/useNotifications";
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   return (
     <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
-      <AnimatedSplashOverlay />
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="host" />
-        <Stack.Screen
-          name="listing/[id]"
-          options={{
-            animation: "slide_from_right",
-            presentation: "card",
-          }}
-        />
-      </Stack>
+      <NotificationsProvider>
+        <AnimatedSplashOverlay />
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="host" />
+          <Stack.Screen
+            name="listing/[id]"
+            options={{
+              animation: "slide_from_right",
+              presentation: "card",
+            }}
+          />
+        </Stack>
 
-      <Toast />
+        <Toast />
+      </NotificationsProvider>
     </ThemeProvider>
   );
 }

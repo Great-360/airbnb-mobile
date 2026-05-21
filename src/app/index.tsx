@@ -5,7 +5,9 @@ import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { ThemedText } from "@/components/themed-text";
 import { API_BASE_URL } from "@/constants/api";
 import { Colors, Spacing } from "@/constants/theme";
+import { useNotifications } from "@/hooks/useNotifications";
 import { authHeaders, clearToken, getToken } from "@/store/auth-store";
+import * as Notifications from "expo-notifications";
 
 type Role = "HOST" | "GUEST";
 
@@ -14,7 +16,9 @@ type User = {
 };
 
 function normalizeRole(role: unknown): Role | null {
-  const raw = String(role ?? "").trim().toUpperCase();
+  const raw = String(role ?? "")
+    .trim()
+    .toUpperCase();
   if (!raw) return null;
   if (raw === "HOST") return "HOST";
   if (raw === "GUEST") return "GUEST";
@@ -27,6 +31,8 @@ function normalizeRole(role: unknown): Role | null {
 export default function IndexScreen() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
+  const { scheduleNotificationAsync, cancelScheduledNotificationAsync } =
+    useNotifications();
 
   useEffect(() => {
     let cancelled = false;
@@ -79,6 +85,19 @@ export default function IndexScreen() {
     };
   }, [router]);
 
+  const sendTestNotification = async () => {
+    await scheduleNotificationAsync({
+      content: {
+        title: "🧪 Test Notification!",
+        body: "This is a test.",
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+        seconds: 2,
+      },
+    });
+  };
+
   return (
     <View style={styles.container}>
       {isLoading ? (
@@ -91,6 +110,33 @@ export default function IndexScreen() {
       ) : (
         <ThemedText type="subtitle">Redirecting…</ThemedText>
       )}
+
+      <View style={styles.notificationPanel}>
+        <ThemedText type="subtitle" style={styles.panelTitle}>
+          Notification test
+        </ThemedText>
+        <ThemedText type="default" style={styles.panelSubtitle}>
+          Tap to schedule a local notification in 2 seconds.
+        </ThemedText>
+
+        <View style={styles.buttonsRow}>
+          <ThemedText
+            onPress={sendTestNotification}
+            style={styles.button}
+            type="smallBold"
+          >
+            Send
+          </ThemedText>
+
+          <ThemedText
+            onPress={cancelScheduledNotificationAsync}
+            style={[styles.button, { backgroundColor: "#333" }]}
+            type="smallBold"
+          >
+            Cancel
+          </ThemedText>
+        </View>
+      </View>
     </View>
   );
 }
@@ -101,7 +147,28 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     gap: Spacing.three,
+    paddingHorizontal: Spacing.four,
   },
   text: { marginTop: Spacing.two },
+  notificationPanel: {
+    width: "100%",
+    marginTop: Spacing.four,
+    padding: Spacing.four,
+    borderRadius: 16,
+    backgroundColor: "rgba(0,0,0,0.05)",
+    alignItems: "center",
+    gap: Spacing.two,
+  },
+  panelTitle: { fontSize: 16 },
+  panelSubtitle: { fontSize: 12, textAlign: "center", color: "#666" },
+  buttonsRow: { flexDirection: "row", gap: Spacing.three },
+  button: {
+    backgroundColor: Colors.light.primary,
+    color: "#fff",
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+    borderRadius: 12,
+    overflow: "hidden",
+    fontWeight: "600",
+  },
 });
-

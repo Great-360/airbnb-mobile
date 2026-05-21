@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "830566102283",
+    "project_id": "airbnb-notification-70364",
+    "storage_bucket": "airbnb-notification-70364.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:830566102283:android:4c92cbc3bd3511c2135e0e",
+        "android_client_info": {
+          "package_name": "com.pierrette.airbnbmobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDSj3TN0VcLQu3QOBO6aq9Z85X_LJNA0rE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

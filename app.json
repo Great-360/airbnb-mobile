@@ -18,7 +18,9 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.pierrette.airbnbmobile"
+      "package": "com.pierrette.airbnbmobile",
+      "googleServicesFile": "./ google-services.json",
+      "useNextNotificationsApi": true
     },
     "web": {
       "output": "static",
