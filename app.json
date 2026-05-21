@@ -19,7 +19,7 @@
       },
       "predictiveBackGestureEnabled": false,
       "package": "com.pierrette.airbnbmobile",
-      "googleServicesFile": "./ google-services.json",
+      "googleServicesFile": "./google-services.json",
       "useNextNotificationsApi": true
     },
     "web": {
