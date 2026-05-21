@@ -10,6 +10,7 @@ import {
   addNotification,
   type NotificationType,
 } from "@/store/notification-store";
+import * as Notifications from "expo-notifications";
 import Toast from "react-native-toast-message";
 
 type ToastParams = Parameters<typeof Toast.show>[0];
@@ -36,5 +37,18 @@ export function showToast(params: ToastParams): void {
   // Only record if there's something meaningful to show
   if (title.trim()) {
     addNotification({ type, title, body });
+
+    // Trigger immediate local system notification
+    Notifications.scheduleNotificationAsync({
+      content: {
+        title,
+        body,
+        data: params && typeof params === "object" ? params : undefined,
+      },
+      trigger: null,
+    }).catch((e) => {
+      console.warn("[Notifications] Failed to schedule toast notification:", e);
+    });
   }
 }
+

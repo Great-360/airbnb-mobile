@@ -1,13 +1,5 @@
 // src/hooks/useNotifications.tsx
-//
-// Fixed for real Android APK builds:
-//  - Wraps handlers in useCallback so useMemo doesn't capture stale closures
-//  - Registers for Expo push tokens (required for remote notifications)
-//  - Removes unreliable Expo Go detection via navigator.userAgent
-//  - Proper Android notification channel setup
-
 import Constants from "expo-constants";
-import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
 import React, {
   createContext,
@@ -16,34 +8,23 @@ import React, {
   useEffect,
   useMemo,
   useRef,
+  useState,
 } from "react";
 import { Platform } from "react-native";
 
-// ── Types ─────────────────────────────────────────────────────────────────────
-
 type NotificationContextValue = {
-  /** Schedule a local notification. Returns the notification ID, or undefined on failure. */
   scheduleNotificationAsync: (
     request: Notifications.NotificationRequestInput,
   ) => Promise<string | undefined>;
-  /** Cancel the most-recently scheduled notification. */
   cancelScheduledNotificationAsync: () => Promise<void>;
-  /** The Expo push token for this device, or null if unavailable. */
   expoPushToken: string | null;
+  permissionStatus: string;
 };
 
-// ── Context ───────────────────────────────────────────────────────────────────
+const NotificationsContext = createContext<NotificationContextValue | undefined>(
+  undefined,
+);
 
-const NotificationsContext = createContext<
-  NotificationContextValue | undefined
->(undefined);
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-/**
- * Ensure the Android "default" notification channel exists.
- * Safe to call multiple times — Android deduplicates by channel ID.
- */
 async function ensureAndroidChannel() {
   if (Platform.OS !== "android") return;
   await Notifications.setNotificationChannelAsync("default", {
@@ -54,171 +35,122 @@ async function ensureAndroidChannel() {
   });
 }
 
-/**
- * Request notification permissions and return whether they were granted.
- */
-async function requestPermissions(): Promise<boolean> {
-  const { status: existing } = await Notifications.getPermissionsAsync();
-  if (existing === "granted") return true;
+export function NotificationsProvider({ children }: { children: React.ReactNode }) {
+  const scheduledIdRef = useRef<string>("");
+  const [expoPushToken, setExpoPushToken] = useState<string | null>(null);
+  const [permissionStatus, setPermissionStatus] = useState<string>("unknown");
 
-  const { status } = await Notifications.requestPermissionsAsync();
-  return status === "granted";
-}
-
-/**
- * Fetch the Expo push token. Only works on a real physical device
- * with a valid projectId. Returns null in simulators/emulators.
- *
- * The projectId comes from app.json → extra.eas.projectId.
- */
-async function fetchExpoPushToken(): Promise<string | null> {
-  // Push tokens are only available on real devices
-  if (!Device.isDevice) {
-    console.log(
-      "[Notifications] Push tokens unavailable in emulator/simulator",
-    );
-    return null;
-  }
-
-  const projectId =
-    Constants.expoConfig?.extra?.eas?.projectId ??
-    Constants.easConfig?.projectId;
-
-  if (!projectId) {
-    console.warn(
-      "[Notifications] No projectId found in app.json → extra.eas.projectId. " +
-        "Push notifications will not work.",
-    );
-    return null;
-  }
-
-  try {
-    const { data } = await Notifications.getExpoPushTokenAsync({ projectId });
-    console.log("[Notifications] Expo push token:", data);
-    return data;
-  } catch (e) {
-    console.warn("[Notifications] Failed to get push token:", e);
-    return null;
-  }
-}
-
-// ── Provider ──────────────────────────────────────────────────────────────────
-
-export function NotificationsProvider({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  const scheduledNotificationIdRef = useRef<string>("");
-  const pushTokenRef = useRef<string | null>(null);
-
-  // ── Boot-time setup ──────────────────────────────────────────────────────
   useEffect(() => {
-    // 1. Set how notifications appear while the app is in the foreground.
+    // 1. Foreground display config
     Notifications.setNotificationHandler({
       handleNotification: async () => ({
         shouldPlaySound: true,
-        shouldSetBadge: false,
-        shouldShowBanner: true,
+        shouldSetBadge: true,
+        shouldShowAlert: true,   // works on all SDK versions
+        shouldShowBanner: true,  // SDK 53+
         shouldShowList: true,
       }),
     });
 
-    // 2. Create the Android channel early (before any scheduling attempt).
-    ensureAndroidChannel().catch((e) =>
-      console.warn("[Notifications] Channel setup failed:", e),
-    );
+    // 2. Android channel
+    ensureAndroidChannel().catch(console.warn);
 
-    // 3. Register for push notifications in the background.
-    //    We don't await this — it shouldn't block the app.
+    // 3. Request permission + get push token
     (async () => {
       try {
         await ensureAndroidChannel();
-        const granted = await requestPermissions();
-        if (!granted) {
-          console.warn("[Notifications] Permission denied by user.");
+
+        const { status: existing } = await Notifications.getPermissionsAsync();
+        let finalStatus = existing;
+
+        if (existing !== "granted") {
+          const { status } = await Notifications.requestPermissionsAsync();
+          finalStatus = status;
+        }
+
+        setPermissionStatus(finalStatus);
+
+        if (finalStatus !== "granted") {
+          console.warn("[Notifications] Permission not granted:", finalStatus);
           return;
         }
-        pushTokenRef.current = await fetchExpoPushToken();
+
+        // Push token (only on real devices)
+        const projectId =
+          Constants.expoConfig?.extra?.eas?.projectId ??
+          Constants.easConfig?.projectId;
+
+        if (projectId) {
+          try {
+            const { data } = await Notifications.getExpoPushTokenAsync({ projectId });
+            console.log("[Notifications] Push token:", data);
+            setExpoPushToken(data);
+          } catch (e) {
+            // Emulator — expected to fail
+            console.log("[Notifications] Push token unavailable (emulator?):", e);
+          }
+        }
       } catch (e) {
-        console.warn("[Notifications] Registration failed:", e);
+        console.warn("[Notifications] Setup error:", e);
       }
     })();
 
-    // 4. Listen for notifications received while the app is open.
-    const receivedSub = Notifications.addNotificationReceivedListener(
-      (notification) => {
-        console.log("[Notifications] Received:", notification);
-      },
+    const sub1 = Notifications.addNotificationReceivedListener((n) =>
+      console.log("[Notifications] Received:", n.request.content.title),
+    );
+    const sub2 = Notifications.addNotificationResponseReceivedListener((r) =>
+      console.log("[Notifications] Tapped:", r.notification.request.content.title),
     );
 
-    // 5. Listen for the user tapping a notification.
-    const responseSub = Notifications.addNotificationResponseReceivedListener(
-      (response) => {
-        console.log("[Notifications] Response:", response);
-        // TODO: navigate based on response.notification.request.content.data
-      },
-    );
-
-    return () => {
-      receivedSub.remove();
-      responseSub.remove();
-    };
+    return () => { sub1.remove(); sub2.remove(); };
   }, []);
 
-  // ── scheduleNotificationAsync ────────────────────────────────────────────
   const scheduleNotificationAsync = useCallback(
-    async (
-      request: Notifications.NotificationRequestInput,
-    ): Promise<string | undefined> => {
+    async (request: Notifications.NotificationRequestInput): Promise<string | undefined> => {
       try {
-        // Ensure channel exists (belt-and-suspenders for Android).
         await ensureAndroidChannel();
 
-        const granted = await requestPermissions();
-        if (!granted) {
-          console.warn(
-            "[Notifications] Cannot schedule — permission not granted.",
-          );
-          return undefined;
+        const { status } = await Notifications.getPermissionsAsync();
+        if (status !== "granted") {
+          const { status: newStatus } = await Notifications.requestPermissionsAsync();
+          if (newStatus !== "granted") {
+            console.warn("[Notifications] Permission denied, cannot schedule.");
+            return undefined;
+          }
         }
 
         const id = await Notifications.scheduleNotificationAsync(request);
-        scheduledNotificationIdRef.current = id;
-        console.log("[Notifications] Scheduled notification id:", id);
+        scheduledIdRef.current = id;
+        console.log("[Notifications] Scheduled id:", id);
         return id;
       } catch (e) {
-        console.warn("[Notifications] Failed to schedule:", e);
+        console.warn("[Notifications] Schedule error:", e);
         return undefined;
       }
     },
     [],
   );
 
-  // ── cancelScheduledNotificationAsync ────────────────────────────────────
-  const cancelScheduledNotificationAsync =
-    useCallback(async (): Promise<void> => {
-      const id = scheduledNotificationIdRef.current;
-      if (!id) return;
-      try {
-        await Notifications.cancelScheduledNotificationAsync(id);
-        console.log("[Notifications] Cancelled notification id:", id);
-      } catch (e) {
-        console.warn("[Notifications] Failed to cancel:", e);
-      } finally {
-        scheduledNotificationIdRef.current = "";
-      }
-    }, []);
+  const cancelScheduledNotificationAsync = useCallback(async () => {
+    const id = scheduledIdRef.current;
+    if (!id) return;
+    try {
+      await Notifications.cancelScheduledNotificationAsync(id);
+    } catch (e) {
+      console.warn("[Notifications] Cancel error:", e);
+    } finally {
+      scheduledIdRef.current = "";
+    }
+  }, []);
 
-  // ── Context value ────────────────────────────────────────────────────────
   const value = useMemo<NotificationContextValue>(
     () => ({
       scheduleNotificationAsync,
       cancelScheduledNotificationAsync,
-      expoPushToken: pushTokenRef.current,
+      expoPushToken,
+      permissionStatus,
     }),
-    // These are stable useCallback refs — safe to include.
-    [scheduleNotificationAsync, cancelScheduledNotificationAsync],
+    [scheduleNotificationAsync, cancelScheduledNotificationAsync, expoPushToken, permissionStatus],
   );
 
   return (
@@ -228,14 +160,8 @@ export function NotificationsProvider({
   );
 }
 
-// ── Hook ──────────────────────────────────────────────────────────────────────
-
 export function useNotifications() {
   const ctx = useContext(NotificationsContext);
-  if (!ctx) {
-    throw new Error(
-      "useNotifications must be called from within NotificationsProvider",
-    );
-  }
+  if (!ctx) throw new Error("useNotifications must be inside NotificationsProvider");
   return ctx;
 }

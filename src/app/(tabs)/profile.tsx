@@ -546,7 +546,14 @@ export default function ProfileScreen() {
                   styles.menuRow,
                   pressed && styles.pressed,
                 ]}
-                onPress={() => {}}
+                onPress={() => {
+                  if (item.label === "Notifications") {
+                    router.push({
+                      pathname: "/(tabs)/inbox",
+                      params: { tab: "notifications" },
+                    });
+                  }
+                }}
               >
                 <SymbolView name={item.icon} size={18} tintColor={theme.text} />
                 <ThemedText style={styles.menuLabel}>{item.label}</ThemedText>

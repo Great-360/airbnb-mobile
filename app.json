@@ -19,8 +19,7 @@
       },
       "predictiveBackGestureEnabled": false,
       "package": "com.pierrette.airbnbmobile",
-      "googleServicesFile": "./google-services.json",
-      "useNextNotificationsApi": true
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
       "output": "static",
@@ -38,7 +37,15 @@
           }
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "color": "#FF385C",
+          "defaultChannel": "default",
+          "androidMode": "default"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
