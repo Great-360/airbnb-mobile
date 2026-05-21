@@ -22,7 +22,6 @@ function normalizeRole(role: unknown): Role | null {
   if (!raw) return null;
   if (raw === "HOST") return "HOST";
   if (raw === "GUEST") return "GUEST";
-  // backend might send other variants; keep it strict-ish but tolerant
   if (raw.includes("HOST")) return "HOST";
   if (raw.includes("GUEST")) return "GUEST";
   return null;
@@ -31,7 +30,7 @@ function normalizeRole(role: unknown): Role | null {
 export default function IndexScreen() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
-  const { scheduleNotificationAsync, cancelScheduledNotificationAsync } =
+  const { scheduleNotificationAsync, cancelScheduledNotificationAsync, expoPushToken } =
     useNotifications();
 
   useEffect(() => {
@@ -49,7 +48,6 @@ export default function IndexScreen() {
 
         const headers = await authHeaders();
 
-        // /auth/me can fail intermittently on cold start. Retry once before clearing token.
         let res = await fetch(`${API_BASE_URL}/auth/me`, { headers });
         if (!res.ok) {
           await new Promise((r) => setTimeout(r, 250));
@@ -57,7 +55,6 @@ export default function IndexScreen() {
         }
 
         if (!res.ok) {
-          // token likely invalid/expired now
           await clearToken();
           router.replace("/(tabs)/explore");
           return;
@@ -72,7 +69,6 @@ export default function IndexScreen() {
           router.replace("/(tabs)/explore");
         }
       } catch {
-        // don't hard-clear token on unknown network errors
         router.replace("/(tabs)/explore");
       } finally {
         if (!cancelled) setIsLoading(false);
@@ -89,7 +85,8 @@ export default function IndexScreen() {
     await scheduleNotificationAsync({
       content: {
         title: "🧪 Test Notification!",
-        body: "This is a test.",
+        body: "This is a test from your Airbnb app.",
+        data: { screen: "inbox" },
       },
       trigger: {
         type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
@@ -118,6 +115,17 @@ export default function IndexScreen() {
         <ThemedText type="default" style={styles.panelSubtitle}>
           Tap to schedule a local notification in 2 seconds.
         </ThemedText>
+
+        {/* Show push token for debugging — remove before shipping */}
+        {expoPushToken ? (
+          <ThemedText type="small" style={styles.tokenText} selectable>
+            Push token: {expoPushToken}
+          </ThemedText>
+        ) : (
+          <ThemedText type="small" style={styles.panelSubtitle}>
+            Push token: not registered yet
+          </ThemedText>
+        )}
 
         <View style={styles.buttonsRow}>
           <ThemedText
@@ -161,6 +169,12 @@ const styles = StyleSheet.create({
   },
   panelTitle: { fontSize: 16 },
   panelSubtitle: { fontSize: 12, textAlign: "center", color: "#666" },
+  tokenText: {
+    fontSize: 10,
+    textAlign: "center",
+    color: "#888",
+    paddingHorizontal: Spacing.two,
+  },
   buttonsRow: { flexDirection: "row", gap: Spacing.three },
   button: {
     backgroundColor: Colors.light.primary,
